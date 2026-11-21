@@ -73,6 +73,12 @@ Dependencies should point inward through interfaces. CPU and GPU modules may dep
 
 The MVP's `TestCpu` is a synthetic instruction set for exercising fetch/decode/execute and memory interfaces. It is not x86-64.
 
+`X64CpuState` is a separate, zero-initialized storage container for 16 64-bit
+general-purpose register slots, `RIP`, and `RFLAGS`. Its typed register index
+only selects storage; the model defines no instruction semantics, register
+aliases, CPU reset behavior, SIMD/FPU state, or Xbox-specific properties.
+`TestCpu` remains the synthetic test ISA and is not changed by this model.
+
 A future x86-64 engine must have:
 - an instruction decoder backed by a documented test corpus;
 - a reference interpreter before JIT optimization;

@@ -1,12 +1,14 @@
 #include "xbridge/core/config.hpp"
 #include "xbridge/core/runtime.hpp"
 #include "xbridge/cpu/test_cpu.hpp"
+#include "xbridge/cpu/x64_cpu_state.hpp"
 #include "xbridge/memory/memory.hpp"
 #include "xbridge/host/execution_policy.hpp"
 #include <iostream>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -42,6 +44,54 @@ bool registers_are_zero(const xbridge::cpu::CpuState& state) {
 
 bool state_is_reset(const xbridge::cpu::CpuState& state) {
     return registers_are_zero(state) && state.instruction_pointer == 0 && !state.halted;
+}
+
+void test_x64_cpu_state() {
+    using namespace xbridge::cpu;
+
+    X64CpuState state;
+    const X64CpuState& const_state = state;
+    static_assert(std::is_same_v<
+                  decltype(state.gpr(X64GeneralRegister::Rax)), std::uint64_t&>);
+    static_assert(std::is_same_v<
+                  decltype(const_state.gpr(X64GeneralRegister::Rax)),
+                  const std::uint64_t&>);
+
+    bool all_registers_are_zero = true;
+    for (const auto value : state.general_purpose_registers) {
+        all_registers_are_zero = all_registers_are_zero && value == 0;
+    }
+    check(state.general_purpose_registers.size() == 16 &&
+          all_registers_are_zero && state.rip == 0 && state.rflags == 0,
+          "X64CpuState default initializes all storage to zero");
+
+    state.gpr(X64GeneralRegister::Rax) = 0x1122334455667788;
+    state.gpr(X64GeneralRegister::Rcx) = 0x8877665544332211;
+    state.gpr(X64GeneralRegister::R8) = 0xFEDCBA9876543210;
+    check(state.gpr(X64GeneralRegister::Rax) == 0x1122334455667788 &&
+          state.gpr(X64GeneralRegister::Rcx) == 0x8877665544332211 &&
+          state.gpr(X64GeneralRegister::R8) == 0xFEDCBA9876543210,
+          "X64CpuState stores independently indexed general registers");
+
+    state.rip = 0x123456789ABCDEF0;
+    state.rflags = 0x0000000000000A95;
+    check(state.rip == 0x123456789ABCDEF0 &&
+          state.rflags == 0x0000000000000A95,
+          "X64CpuState stores RIP and RFLAGS independently");
+
+    state.gpr(X64GeneralRegister::R15) = 0xA5A5A5A55A5A5A5A;
+    check(state.gpr(X64GeneralRegister::R15) == 0xA5A5A5A55A5A5A5A,
+          "X64CpuState accesses the final R15 register slot");
+    check(const_state.gpr(X64GeneralRegister::R15) == 0xA5A5A5A55A5A5A5A,
+          "const X64CpuState access reads the selected register");
+
+    const auto invalid_register = static_cast<X64GeneralRegister>(16);
+    check_throws<std::out_of_range>(
+        [&] { (void)state.gpr(invalid_register); },
+        "mutable X64CpuState register access rejects an invalid index");
+    check_throws<std::out_of_range>(
+        [&] { (void)const_state.gpr(invalid_register); },
+        "const X64CpuState register access rejects an invalid index");
 }
 
 void test_cpu_execution_hardening() {
@@ -280,6 +330,7 @@ int main() {
           "Series S is not a supported target");
     check(!parse_profile("unknown", parsed), "reject unknown profile");
 
+    test_x64_cpu_state();
     test_cpu_execution_hardening();
     test_cpu_program_lifecycle();
 
