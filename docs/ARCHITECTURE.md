@@ -27,6 +27,16 @@ Hardware acceleration is preferred. A **software fallback** is required where a 
 
 The guest remains a logically fixed Xbox Series X regardless of host hardware. The host's 16 GB RAM or 8 GB VRAM is not treated as equivalent to the console's unified GDDR6 pool. Guest memory is modeled separately and mapped/committed to host resources on demand, subject to host budgets. Host resource exhaustion must produce controlled errors or documented degradation, not silently change guest memory semantics.
 
+### Current GuestMemory scaffold contract
+
+The current `GuestMemory` is a generic test scaffold, not an Xbox memory specification:
+
+- Guest addresses are 32-bit unsigned byte offsets into one zero-initialized contiguous region. The maximum representable region is 2^32 bytes; a region larger than that is rejected.
+- A non-empty access is valid only when its complete half-open range `[address, address + length)` lies inside `[0, size)`. Boundary arithmetic must not wrap.
+- `read8`/`write8` access one byte. `read32`/`write32` operate bytewise in little-endian order and support unaligned addresses. `load` copies the provided bytes without interpreting them.
+- An out-of-range access throws `std::out_of_range`; a requested region larger than the address space throws `std::length_error`. A zero-length `load` is a no-op at any address from zero through `size`, inclusive, and is invalid beyond that.
+- Reservation/release, per-region permissions, unmapped/reserved/committed states, aliasing, and host mappings are not implemented. Their Xbox-specific behavior remains `unknown`; this scaffold must not be used to infer it.
+
 Performance profiles may tune host thread scheduling, cache sizes, resource residency, asynchronous work, and presentation resolution/quality where safe. They must not silently alter guest-visible CPU/GPU behavior, timing assumptions, memory layout, or API results. Any accuracy/performance trade-off that can affect compatibility must be explicit and opt-in.
 
 ### Graphics backend strategy
