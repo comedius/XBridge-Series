@@ -17,7 +17,7 @@ Xbox Series X is the only current emulation target. Do not maintain a parallel S
 XBridge uses a **hybrid** host-hardware policy:
 
 1. Detect host CPU features, logical cores, available RAM, GPU/device capabilities, VRAM when exposed, graphics API/driver support, and storage characteristics.
-2. Select safe defaults and the best supported acceleration path automatically.
+2. Select safe defaults and the best supported graphics acceleration path automatically.
 3. Expose user-overridable performance profiles and advanced settings.
 4. Re-evaluate capabilities when devices or drivers change; report why a backend was selected or rejected.
 
@@ -79,6 +79,12 @@ A future x86-64 engine must have:
 - explicit exception and flag semantics;
 - tests for each supported instruction form;
 - differential tests against a trusted reference where lawful and practical.
+
+For host CPU selection, `Automatic` and `Interpreter` select the interpreter.
+`Jit` is selected only when explicitly requested and host capabilities report it
+available; otherwise the policy falls back to the interpreter and explains why
+in its report. This is a selection rule, not a JIT implementation. Any future
+JIT requires its own technical justification and tests.
 
 ## GPU strategy
 

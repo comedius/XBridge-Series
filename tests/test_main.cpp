@@ -55,14 +55,18 @@ int main() {
     capable_host.direct3d12_available = true;
     const auto accelerated = host::select_execution_plan(capable_host, {});
     check(accelerated.graphics == host::GraphicsBackend::Vulkan &&
-          accelerated.cpu == host::CpuBackend::Jit && accelerated.graphics_accelerated,
-          "automatic policy selects supported acceleration");
+          accelerated.graphics_accelerated,
+          "automatic policy selects supported graphics acceleration");
+    check(accelerated.cpu == host::CpuBackend::Interpreter,
+          "automatic CPU selection uses interpreter when JIT is available");
 
     host::HostCapabilities limited_host{};
     limited_host.software_renderer_available = true;
     const auto fallback = host::select_execution_plan(limited_host, {});
     check(fallback.graphics == host::GraphicsBackend::Software && fallback.fallback_used,
           "automatic policy uses software fallback when acceleration is unavailable");
+    check(fallback.cpu == host::CpuBackend::Interpreter,
+          "automatic CPU selection uses interpreter when JIT is unavailable");
 
     host::ExecutionSettings no_fallback{};
     no_fallback.allow_software_fallback = false;
@@ -74,9 +78,21 @@ int main() {
     manual.graphics = host::GraphicsPreference::Direct3D12;
     manual.cpu = host::CpuPreference::Interpreter;
     const auto overridden = host::select_execution_plan(capable_host, manual);
-    check(overridden.graphics == host::GraphicsBackend::Direct3D12 &&
-          overridden.cpu == host::CpuBackend::Interpreter,
-          "manual backend preferences override automatic defaults");
+    check(overridden.graphics == host::GraphicsBackend::Direct3D12,
+          "manual graphics preference overrides automatic selection");
+    check(overridden.cpu == host::CpuBackend::Interpreter,
+          "explicit interpreter preference selects interpreter");
+
+    host::ExecutionSettings jit_requested{};
+    jit_requested.cpu = host::CpuPreference::Jit;
+    const auto jit_available = host::select_execution_plan(capable_host, jit_requested);
+    check(jit_available.cpu == host::CpuBackend::Jit,
+          "explicit JIT preference selects JIT when available");
+    const auto jit_unavailable = host::select_execution_plan(limited_host, jit_requested);
+    check(jit_unavailable.cpu == host::CpuBackend::Interpreter,
+          "explicit JIT preference falls back to interpreter when unavailable");
+    check(jit_unavailable.report.find("JIT requested but unavailable") != std::string::npos,
+          "CPU report explains unavailable requested JIT");
 
     memory::GuestMemory memory(256);
     check(memory.read8(0) == 0, "guest memory is zero initialized");
