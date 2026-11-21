@@ -50,15 +50,34 @@ ExecutionPlan select_execution_plan(const HostCapabilities& host,
                                 plan.graphics == GraphicsBackend::Direct3D12;
     if (plan.graphics == GraphicsBackend::Software) plan.fallback_used = true;
 
-    // Interpreter is the conservative reference path. JIT is selected only
-    // when explicitly requested or available under automatic policy.
-    plan.cpu = (settings.cpu == CpuPreference::Interpreter || !host.cpu_jit_available)
-                   ? CpuBackend::Interpreter : CpuBackend::Jit;
+    switch (settings.cpu) {
+    case CpuPreference::Automatic:
+    case CpuPreference::Interpreter:
+        plan.cpu = CpuBackend::Interpreter;
+        break;
+    case CpuPreference::Jit:
+        plan.cpu = host.cpu_jit_available ? CpuBackend::Jit : CpuBackend::Interpreter;
+        break;
+    }
 
     std::ostringstream report;
     report << "Graphics: " << graphics_name(plan.graphics)
-           << "; CPU: " << (plan.cpu == CpuBackend::Jit ? "JIT" : "interpreter")
-           << "; profile: ";
+           << "; CPU: " << (plan.cpu == CpuBackend::Jit ? "JIT" : "interpreter");
+    switch (settings.cpu) {
+    case CpuPreference::Automatic:
+        report << " (automatic policy; JIT is opt-in)";
+        break;
+    case CpuPreference::Interpreter:
+        report << " (explicitly requested)";
+        break;
+    case CpuPreference::Jit:
+        if (plan.cpu == CpuBackend::Jit)
+            report << " (explicitly requested; host reports available)";
+        else
+            report << " (JIT requested but unavailable; falling back to interpreter)";
+        break;
+    }
+    report << "; profile: ";
     switch (plan.profile) {
     case PerformanceProfile::Low: report << "low"; break;
     case PerformanceProfile::Balanced: report << "balanced"; break;
