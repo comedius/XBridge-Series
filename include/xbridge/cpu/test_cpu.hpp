@@ -1,5 +1,6 @@
 #pragma once
 #include "xbridge/memory/memory.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -31,6 +32,7 @@ private:
     std::uint8_t fetch8();
     std::uint32_t fetch32();
     memory::GuestMemory& memory_;
+    std::size_t program_size_{0};
     CpuState state_{};
 };
 

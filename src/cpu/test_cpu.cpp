@@ -7,10 +7,14 @@ TestCpu::TestCpu(memory::GuestMemory& memory) : memory_(memory) {}
 
 void TestCpu::load_program(const std::vector<std::uint8_t>& program) {
     state_ = {};
+    program_size_ = 0;
     memory_.load(0, program);
+    program_size_ = program.size();
 }
 
 std::uint8_t TestCpu::fetch8() {
+    if (static_cast<std::size_t>(state_.instruction_pointer) >= program_size_)
+        throw std::out_of_range("TestCpu instruction fetch outside loaded program");
     const auto value = memory_.read8(state_.instruction_pointer);
     ++state_.instruction_pointer;
     return value;
