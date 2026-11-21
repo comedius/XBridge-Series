@@ -34,6 +34,240 @@ void check_does_not_throw(F&& fn, const char* message) {
     try { fn(); check(true, message); }
     catch (const std::exception&) { check(false, message); }
 }
+
+bool registers_are_zero(const xbridge::cpu::CpuState& state) {
+    return state.registers[0] == 0 && state.registers[1] == 0 &&
+           state.registers[2] == 0 && state.registers[3] == 0;
+}
+
+bool state_is_reset(const xbridge::cpu::CpuState& state) {
+    return registers_are_zero(state) && state.instruction_pointer == 0 && !state.halted;
+}
+
+void test_cpu_execution_hardening() {
+    using namespace xbridge;
+
+    memory::GuestMemory last_byte_memory(1);
+    cpu::TestCpu last_byte_cpu(last_byte_memory);
+    last_byte_cpu.load_program({0xFF});
+    last_byte_cpu.run(1);
+    check(last_byte_cpu.state().instruction_pointer == 1 && last_byte_cpu.state().halted,
+          "TestCpu executes Halt at the last valid guest address");
+    check_does_not_throw([&] { last_byte_cpu.run(0); },
+                         "run after Halt is a no-op even with a zero instruction limit");
+    check(last_byte_cpu.state().instruction_pointer == 1 && last_byte_cpu.state().halted,
+          "run after Halt preserves the halted CPU state");
+
+    const auto check_invalid_register = [](const std::vector<std::uint8_t>& program,
+                                           const char* error_message,
+                                           const char* state_message) {
+        memory::GuestMemory memory(program.size());
+        cpu::TestCpu test_cpu(memory);
+        test_cpu.load_program(program);
+        check_throws<std::runtime_error>([&] { test_cpu.run(); }, error_message);
+        check(test_cpu.state().instruction_pointer == program.size() &&
+              registers_are_zero(test_cpu.state()) && !test_cpu.state().halted,
+              state_message);
+    };
+    check_invalid_register({0x01, 0x04, 0x01, 0x00, 0x00, 0x00},
+                           "LoadImm rejects an invalid register",
+                           "LoadImm failure preserves registers and records consumed operands");
+    check_invalid_register({0x02, 0x04, 0x01, 0x00, 0x00, 0x00},
+                           "AddImm rejects an invalid register",
+                           "AddImm failure preserves registers and records consumed operands");
+    check_invalid_register({0x03, 0x04, 0x00, 0x00, 0x00, 0x00},
+                           "Store rejects an invalid register",
+                           "Store register failure preserves registers and records consumed operands");
+
+    const auto check_truncated_program = [](const std::vector<std::uint8_t>& program,
+                                            std::uint32_t expected_ip,
+                                            const char* error_message,
+                                            const char* state_message) {
+        memory::GuestMemory memory(program.size());
+        cpu::TestCpu test_cpu(memory);
+        test_cpu.load_program(program);
+        check_throws<std::out_of_range>([&] { test_cpu.run(); }, error_message);
+        check(test_cpu.state().instruction_pointer == expected_ip &&
+              registers_are_zero(test_cpu.state()) && !test_cpu.state().halted,
+              state_message);
+    };
+    check_truncated_program({0x01}, 1,
+                            "LoadImm rejects a missing register operand",
+                            "missing register leaves the IP at the program boundary");
+    check_truncated_program({0x01, 0x00, 0x34, 0x12}, 4,
+                            "LoadImm rejects a truncated immediate",
+                            "truncated LoadImm leaves the IP and registers consistent");
+    check_truncated_program({0x02, 0x00, 0x34}, 3,
+                            "AddImm rejects a truncated immediate",
+                            "truncated AddImm leaves the IP and registers consistent");
+    check_truncated_program({0x03, 0x00, 0x0C, 0x00, 0x00}, 5,
+                            "Store rejects a truncated address operand",
+                            "truncated Store leaves the IP and registers consistent");
+
+    memory::GuestMemory unknown_memory(2);
+    cpu::TestCpu unknown_cpu(unknown_memory);
+    unknown_cpu.load_program({0x7E, 0xFF});
+    check_throws<std::runtime_error>([&] { unknown_cpu.run(); },
+                                    "unknown opcode throws a runtime error");
+    check(unknown_cpu.state().instruction_pointer == 1 &&
+          registers_are_zero(unknown_cpu.state()) && !unknown_cpu.state().halted,
+          "unknown opcode leaves a resumable state after its fetched byte");
+    check_does_not_throw([&] { unknown_cpu.run(); },
+                         "run after unknown-opcode error resumes from the current IP");
+    check(unknown_cpu.state().instruction_pointer == 2 && unknown_cpu.state().halted,
+          "resumed execution reaches the following Halt");
+
+    const std::vector<std::uint8_t> limit_program{0x01, 0x00, 0x07, 0x00, 0x00, 0x00, 0xFF};
+    memory::GuestMemory zero_limit_memory(limit_program.size());
+    cpu::TestCpu zero_limit_cpu(zero_limit_memory);
+    zero_limit_cpu.load_program(limit_program);
+    check_throws<std::runtime_error>([&] { zero_limit_cpu.run(0); },
+                                    "zero instruction limit fails before execution");
+    check(state_is_reset(zero_limit_cpu.state()),
+          "zero instruction limit preserves the initial CPU state");
+
+    memory::GuestMemory normal_limit_memory(limit_program.size());
+    cpu::TestCpu normal_limit_cpu(normal_limit_memory);
+    normal_limit_cpu.load_program(limit_program);
+    check_does_not_throw([&] { normal_limit_cpu.run(10); },
+                         "normal instruction limit allows the program to halt");
+    check(normal_limit_cpu.state().registers[0] == 7 &&
+          normal_limit_cpu.state().instruction_pointer == limit_program.size() &&
+          normal_limit_cpu.state().halted,
+          "normal instruction limit preserves completed instruction state");
+
+    memory::GuestMemory exact_limit_memory(limit_program.size());
+    cpu::TestCpu exact_limit_cpu(exact_limit_memory);
+    exact_limit_cpu.load_program(limit_program);
+    check_does_not_throw([&] { exact_limit_cpu.run(2); },
+                         "exact instruction limit allows the final Halt");
+    check(exact_limit_cpu.state().halted,
+          "exact instruction limit finishes in a halted state");
+
+    memory::GuestMemory exceeded_limit_memory(limit_program.size());
+    cpu::TestCpu exceeded_limit_cpu(exceeded_limit_memory);
+    exceeded_limit_cpu.load_program(limit_program);
+    check_throws<std::runtime_error>([&] { exceeded_limit_cpu.run(1); },
+                                     "instruction limit rejects an additional instruction");
+    check(exceeded_limit_cpu.state().registers[0] == 7 &&
+          exceeded_limit_cpu.state().instruction_pointer == 6 &&
+          !exceeded_limit_cpu.state().halted,
+          "instruction-limit error preserves completed work and the next IP");
+    check_does_not_throw([&] { exceeded_limit_cpu.run(1); },
+                         "run after instruction-limit error resumes at the next instruction");
+    check(exceeded_limit_cpu.state().halted &&
+          exceeded_limit_cpu.state().instruction_pointer == limit_program.size(),
+          "resumed instruction-limit run reaches Halt");
+
+    const std::vector<std::uint8_t> store_to_end{
+        0x01, 0x00, 0xD4, 0xC3, 0xB2, 0xA1,
+        0x03, 0x00, 0x1C, 0x00, 0x00, 0x00, 0xFF
+    };
+    memory::GuestMemory end_store_memory(32);
+    cpu::TestCpu end_store_cpu(end_store_memory);
+    end_store_cpu.load_program(store_to_end);
+    check_does_not_throw([&] { end_store_cpu.run(); },
+                         "CPU Store ending at the last valid guest byte succeeds");
+    check(end_store_memory.read32(28) == 0xA1B2C3D4,
+          "CPU Store writes the final valid guest word");
+
+    const std::vector<std::uint8_t> unaligned_store{
+        0x01, 0x00, 0xD4, 0xC3, 0xB2, 0xA1,
+        0x03, 0x00, 0x11, 0x00, 0x00, 0x00, 0xFF
+    };
+    memory::GuestMemory unaligned_memory(32);
+    cpu::TestCpu unaligned_cpu(unaligned_memory);
+    unaligned_cpu.load_program(unaligned_store);
+    check_does_not_throw([&] { unaligned_cpu.run(); },
+                         "CPU Store supports the GuestMemory unaligned access contract");
+    check(unaligned_memory.read32(17) == 0xA1B2C3D4,
+          "unaligned CPU Store preserves the written value");
+
+    const std::vector<std::uint8_t> failing_store{
+        0x01, 0x00, 0xD4, 0xC3, 0xB2, 0xA1,
+        0x03, 0x00, 0x0E, 0x00, 0x00, 0x00
+    };
+    memory::GuestMemory failing_store_memory(16);
+    cpu::TestCpu failing_store_cpu(failing_store_memory);
+    failing_store_cpu.load_program(failing_store);
+    check_throws<std::out_of_range>([&] { failing_store_cpu.run(); },
+                                    "out-of-range CPU Store propagates a memory exception");
+    check(failing_store_cpu.state().registers[0] == 0xA1B2C3D4 &&
+          failing_store_cpu.state().instruction_pointer == failing_store.size() &&
+          !failing_store_cpu.state().halted &&
+          failing_store_memory.read8(14) == 0 && failing_store_memory.read8(15) == 0,
+          "failed CPU Store preserves registers, IP, and guest memory");
+    check_throws<std::out_of_range>([&] { failing_store_cpu.run(); },
+                                    "run after failed Store cannot fetch beyond the program");
+    check(failing_store_cpu.state().instruction_pointer == failing_store.size() &&
+          failing_store_cpu.state().registers[0] == 0xA1B2C3D4 &&
+          !failing_store_cpu.state().halted,
+          "repeated fetch failure leaves CPU state unchanged");
+}
+
+void test_cpu_program_lifecycle() {
+    using namespace xbridge;
+
+    memory::GuestMemory memory(16);
+    cpu::TestCpu test_cpu(memory);
+    check(state_is_reset(test_cpu.state()), "TestCpu starts with zeroed registers, IP, and halt state");
+
+    const std::vector<std::uint8_t> previous_program{
+        0x01, 0x02, 0x2A, 0x00, 0x00, 0x00,
+        0x01, 0x01, 0x63, 0x00, 0x00, 0x00,
+        0xFF
+    };
+    test_cpu.load_program(previous_program);
+    check(state_is_reset(test_cpu.state()), "load_program resets the initial CPU state");
+    test_cpu.run();
+    check(test_cpu.state().registers[1] == 99 &&
+          test_cpu.state().registers[2] == 42 &&
+          test_cpu.state().halted,
+          "previous program establishes state for reload regression");
+
+    const std::vector<std::uint8_t> shorter_program{0x01, 0x00, 0x05, 0x00, 0x00, 0x00};
+    test_cpu.load_program(shorter_program);
+    check(state_is_reset(test_cpu.state()),
+          "reloading after Halt resets all registers, IP, and halt state");
+    check(memory.read8(6) == 0x01,
+          "load_program does not clear guest bytes beyond the new program");
+    check_throws<std::out_of_range>([&] { test_cpu.run(); },
+                                    "short program cannot execute stale trailing instructions");
+    check(test_cpu.state().instruction_pointer == shorter_program.size() &&
+          test_cpu.state().registers[0] == 5 &&
+          test_cpu.state().registers[1] == 0 &&
+          test_cpu.state().registers[2] == 0 &&
+          !test_cpu.state().halted,
+          "program-boundary failure preserves new program state without stale execution");
+
+    const std::vector<std::uint8_t> empty_program;
+    test_cpu.load_program(empty_program);
+    check(state_is_reset(test_cpu.state()), "loading an empty program resets CPU state");
+    check(memory.read8(0) == 0x01,
+          "loading an empty program leaves prior GuestMemory bytes unchanged");
+    check_throws<std::out_of_range>([&] { test_cpu.run(); },
+                                    "running an empty program rejects fetch outside its extent");
+    check(state_is_reset(test_cpu.state()),
+          "empty-program fetch failure preserves reset state");
+
+    memory::GuestMemory small_memory(1);
+    cpu::TestCpu small_cpu(small_memory);
+    small_cpu.load_program({0xFF});
+    small_cpu.run();
+    check(small_cpu.state().halted, "small memory instance runs a fitting program");
+    check_throws<std::out_of_range>([&] { small_cpu.load_program({0xFF, 0xFF}); },
+                                    "load_program rejects programs larger than GuestMemory");
+    check(state_is_reset(small_cpu.state()),
+          "failed program load leaves the CPU state reset");
+    check(small_memory.read8(0) == 0xFF,
+          "failed program load leaves GuestMemory unchanged");
+    check_throws<std::out_of_range>([&] { small_cpu.run(); },
+                                    "run after failed load does not execute the old program");
+    small_cpu.load_program({0xFF});
+    small_cpu.run();
+    check(small_cpu.state().instruction_pointer == 1 && small_cpu.state().halted,
+          "TestCpu loads and halts a valid program after a failed load");
+}
 }
 
 int main() {
@@ -45,6 +279,9 @@ int main() {
     check(!parse_profile("series_s", parsed),
           "Series S is not a supported target");
     check(!parse_profile("unknown", parsed), "reject unknown profile");
+
+    test_cpu_execution_hardening();
+    test_cpu_program_lifecycle();
 
     host::HostCapabilities capable_host{};
     capable_host.logical_threads = 16;

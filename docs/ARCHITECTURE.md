@@ -80,6 +80,33 @@ A future x86-64 engine must have:
 - tests for each supported instruction form;
 - differential tests against a trusted reference where lawful and practical.
 
+### TestCpu state and execution contract
+
+`TestCpu` is a synthetic test ISA, not an Xbox or x86-64 CPU. `load_program()`
+resets its registers, instruction pointer, halt state, and loaded-program
+extent before copying bytes to guest address zero. Bytes in `GuestMemory`
+beyond the copied program are not cleared, but instruction fetch is bounded
+to the currently loaded program, so stale trailing bytes are not executed.
+An empty program can be loaded; attempting to run it throws
+`std::out_of_range`. If loading fails, the CPU remains reset with no loaded
+program.
+
+Instruction fetch advances the instruction pointer only after each byte is
+read successfully. 32-bit operands are fetched little-endian, one byte at a
+time; a truncated instruction throws `std::out_of_range`, and the pointer
+reflects bytes already fetched. Unknown opcodes, invalid register indices,
+and an exhausted instruction limit throw `std::runtime_error`. A `Store` that
+exceeds GuestMemory bounds propagates `std::out_of_range`; GuestMemory checks
+the full write before modifying bytes.
+
+The instruction limit is checked before each instruction fetch. A zero limit
+fails without executing an instruction; a program that executes `Halt` within
+the limit completes. Errors do not set the halt flag or roll back already
+consumed bytes or completed instructions. A later `run()` starts from the
+current state with a fresh per-call limit; there is no automatic error
+recovery. `Halt` advances past its opcode and makes subsequent `run()` calls
+no-ops.
+
 For host CPU selection, `Automatic` and `Interpreter` select the interpreter.
 `Jit` is selected only when explicitly requested and host capabilities report it
 available; otherwise the policy falls back to the interpreter and explains why
