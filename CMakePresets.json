@@ -9,6 +9,13 @@
       "binaryDir": "${sourceDir}/build/windows-debug"
     },
     {
+      "name": "windows-2026-debug",
+      "displayName": "Windows 2026 Debug",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/windows-2026-debug"
+    },
+    {
       "name": "ninja-debug",
       "displayName": "Ninja Debug",
       "generator": "Ninja",
@@ -19,10 +26,13 @@
     }
   ],
   "buildPresets": [
-    { "name": "windows-debug", "configurePreset": "windows-debug" },
+    { "name": "windows-debug", "configurePreset": "windows-debug", "configuration": "Debug" },
+    { "name": "windows-2026-debug", "configurePreset": "windows-2026-debug", "configuration": "Debug" },
     { "name": "ninja-debug", "configurePreset": "ninja-debug" }
   ],
   "testPresets": [
+    { "name": "windows-debug", "configurePreset": "windows-debug", "configuration": "Debug", "output": { "outputOnFailure": true } },
+    { "name": "windows-2026-debug", "configurePreset": "windows-2026-debug", "configuration": "Debug", "output": { "outputOnFailure": true } },
     { "name": "ninja-debug", "configurePreset": "ninja-debug", "output": { "outputOnFailure": true } }
   ]
 }

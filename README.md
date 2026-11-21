@@ -36,19 +36,39 @@ The host CPU, RAM, GPU, VRAM, drivers, and storage affect implementation and res
 
 ## Requirements
 
-- CMake 3.20+
+- CMake 3.21+ (required for the preset schema used by this project)
 - C++20 compiler:
-  - Visual Studio 2022 (MSVC) with Desktop development with C++
+  - Visual Studio 2022 or Visual Studio 2026 (MSVC) with Desktop development with C++
   - or recent Clang/GCC
 - Ninja is optional.
 
-## Build on Windows (Visual Studio)
+The Visual Studio 2026 preset requires a CMake version that provides the
+`Visual Studio 18 2026` generator. Check `cmake --help` if that preset is not
+recognized.
+
+## Build on Windows (Visual Studio 2022)
 
 ```powershell
 cmake --preset windows-debug
 cmake --build --preset windows-debug
-ctest --test-dir build/windows-debug --output-on-failure
+ctest --preset windows-debug
 .\build\windows-debug\Debug\xbridge.exe --profile series_x
+```
+
+For Visual Studio 2026:
+
+```powershell
+cmake --preset windows-2026-debug
+cmake --build --preset windows-2026-debug
+ctest --preset windows-2026-debug
+.\build\windows-2026-debug\Debug\xbridge.exe --profile series_x
+```
+
+For a direct CTest invocation with the Visual Studio 2022 multi-config build,
+specify the configuration explicitly:
+
+```powershell
+ctest --test-dir build/windows-debug -C Debug --output-on-failure
 ```
 
 For a single-configuration generator such as Ninja:
