@@ -75,9 +75,13 @@ The MVP's `TestCpu` is a synthetic instruction set for exercising fetch/decode/e
 
 `X64CpuState` is a separate, zero-initialized storage container for 16 64-bit
 general-purpose register slots, `RIP`, and `RFLAGS`. Its typed register index
-only selects storage; the model defines no instruction semantics, register
-aliases, CPU reset behavior, SIMD/FPU state, or Xbox-specific properties.
-`TestCpu` remains the synthetic test ISA and is not changed by this model.
+selects storage, and its `read_gpr()`/`write_gpr()` helpers expose 64-, 32-,
+16-, 8-, and legacy high-byte views. A 32-bit write zero-extends; narrower
+writes preserve all non-selected bits. High-byte access applies only to
+`RAX`, `RBX`, `RCX`, and `RDX`; instruction-specific legality, including REX
+prefix handling, belongs to a future decoder. This model defines no
+instruction execution, CPU reset behavior, SIMD/FPU state, or Xbox-specific
+properties. `TestCpu` remains the synthetic test ISA and is not changed.
 
 A future x86-64 engine must have:
 - an instruction decoder backed by a documented test corpus;

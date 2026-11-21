@@ -4,6 +4,7 @@
 #include "xbridge/cpu/x64_cpu_state.hpp"
 #include "xbridge/memory/memory.hpp"
 #include "xbridge/host/execution_policy.hpp"
+#include <cstddef>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -92,6 +93,143 @@ void test_x64_cpu_state() {
     check_throws<std::out_of_range>(
         [&] { (void)const_state.gpr(invalid_register); },
         "const X64CpuState register access rejects an invalid index");
+}
+
+void test_x64_register_views() {
+    using namespace xbridge::cpu;
+
+    X64CpuState state;
+    state.gpr(X64GeneralRegister::Rax) = 0xA1B2C3D4E5F60718;
+    const auto original_registers = state.general_purpose_registers;
+    check(state.read_gpr(X64GeneralRegister::Rax, X64GprWidth::Bits64) ==
+              0xA1B2C3D4E5F60718 &&
+          state.read_gpr(X64GeneralRegister::Rax, X64GprWidth::Bits32) == 0xE5F60718 &&
+          state.read_gpr(X64GeneralRegister::Rax, X64GprWidth::Bits16) == 0x0718 &&
+          state.read_gpr(X64GeneralRegister::Rax, X64GprWidth::Bits8) == 0x18 &&
+          state.read_gpr(X64GeneralRegister::Rax, X64GprWidth::High8) == 0x07,
+          "x64 GPR reads return the selected register portions");
+    check(state.general_purpose_registers == original_registers,
+          "x64 GPR reads leave stored registers unchanged");
+
+    state.write_gpr(X64GeneralRegister::Rax, X64GprWidth::Bits64, 0x1122334455667788);
+    check(state.gpr(X64GeneralRegister::Rax) == 0x1122334455667788,
+          "64-bit GPR write replaces the complete register");
+
+    state.write_gpr(X64GeneralRegister::Rax, X64GprWidth::Bits32, 0xA1B2C3D4);
+    check(state.gpr(X64GeneralRegister::Rax) == 0x00000000A1B2C3D4,
+          "32-bit GPR write zero-extends to 64 bits");
+
+    state.gpr(X64GeneralRegister::Rcx) = 0x1122334455667788;
+    state.write_gpr(X64GeneralRegister::Rcx, X64GprWidth::Bits16, 0xABCD);
+    check(state.gpr(X64GeneralRegister::Rcx) == 0x112233445566ABCD,
+          "16-bit GPR write preserves the upper bits");
+
+    state.gpr(X64GeneralRegister::Rdx) = 0x1122334455667788;
+    state.write_gpr(X64GeneralRegister::Rdx, X64GprWidth::Bits8, 0xAB);
+    check(state.gpr(X64GeneralRegister::Rdx) == 0x11223344556677AB,
+          "8-bit GPR write preserves all other bits");
+
+    state.gpr(X64GeneralRegister::Rax) = 0x1122334455667788;
+    state.gpr(X64GeneralRegister::Rbx) = 0xFFEEDDCCBBAA9988;
+    state.gpr(X64GeneralRegister::Rcx) = 0x0123456789ABCDEF;
+    state.gpr(X64GeneralRegister::Rdx) = 0x8877665544332211;
+    state.write_gpr(X64GeneralRegister::Rax, X64GprWidth::High8, 0xA1);
+    state.write_gpr(X64GeneralRegister::Rbx, X64GprWidth::High8, 0xB2);
+    state.write_gpr(X64GeneralRegister::Rcx, X64GprWidth::High8, 0xC3);
+    state.write_gpr(X64GeneralRegister::Rdx, X64GprWidth::High8, 0xD4);
+    check(state.read_gpr(X64GeneralRegister::Rax, X64GprWidth::High8) == 0xA1 &&
+          state.read_gpr(X64GeneralRegister::Rbx, X64GprWidth::High8) == 0xB2 &&
+          state.read_gpr(X64GeneralRegister::Rcx, X64GprWidth::High8) == 0xC3 &&
+          state.read_gpr(X64GeneralRegister::Rdx, X64GprWidth::High8) == 0xD4,
+          "high-byte views map AH, BH, CH, and DH to their registers");
+    check(state.gpr(X64GeneralRegister::Rax) == 0x112233445566A188 &&
+          state.gpr(X64GeneralRegister::Rbx) == 0xFFEEDDCCBBAAB288 &&
+          state.gpr(X64GeneralRegister::Rcx) == 0x0123456789ABC3EF &&
+          state.gpr(X64GeneralRegister::Rdx) == 0x887766554433D411,
+          "high-byte writes preserve all bits outside bits 8 through 15");
+
+    state.gpr(X64GeneralRegister::R8) = 0x123456789ABCDEF0;
+    check_throws<std::invalid_argument>(
+        [&] { (void)state.read_gpr(X64GeneralRegister::R8, X64GprWidth::High8); },
+        "high-byte read rejects registers without a legacy high-byte view");
+    check_throws<std::invalid_argument>(
+        [&] { state.write_gpr(X64GeneralRegister::R8, X64GprWidth::High8, 0xFF); },
+        "high-byte write rejects registers without a legacy high-byte view");
+    check(state.gpr(X64GeneralRegister::R8) == 0x123456789ABCDEF0,
+          "rejected high-byte write leaves the register unchanged");
+
+    const auto invalid_register = static_cast<X64GeneralRegister>(16);
+    check_throws<std::out_of_range>(
+        [&] { (void)state.read_gpr(invalid_register, X64GprWidth::Bits8); },
+        "GPR read rejects an invalid register index");
+    check_throws<std::out_of_range>(
+        [&] { state.write_gpr(invalid_register, X64GprWidth::Bits8, 0xFF); },
+        "GPR write rejects an invalid register index");
+
+    const auto invalid_width = static_cast<X64GprWidth>(0xFF);
+    check_throws<std::invalid_argument>(
+        [&] { (void)state.read_gpr(X64GeneralRegister::Rax, invalid_width); },
+        "GPR read rejects an invalid width");
+    check_throws<std::invalid_argument>(
+        [&] { state.write_gpr(X64GeneralRegister::Rax, invalid_width, 0xFF); },
+        "GPR write rejects an invalid width");
+}
+
+void test_x64_register_views_all_registers() {
+    using namespace xbridge::cpu;
+
+    X64CpuState state;
+    bool all_64_bit_accesses_match = true;
+    bool all_32_bit_writes_zero_extend = true;
+    bool all_16_bit_writes_preserve_upper_bits = true;
+    bool all_8_bit_writes_preserve_other_bits = true;
+
+    for (std::size_t index = 0; index < state.general_purpose_registers.size(); ++index) {
+        const auto reg = static_cast<X64GeneralRegister>(index);
+        const auto index_value = static_cast<std::uint64_t>(index);
+
+        const auto value64 = 0x1020304050607000ULL | index_value;
+        state.write_gpr(reg, X64GprWidth::Bits64, value64);
+        all_64_bit_accesses_match &=
+            state.read_gpr(reg, X64GprWidth::Bits64) == value64;
+
+        const auto initial32 = 0xA1B2C3D400000000ULL | index_value;
+        const auto value32 = 0x76543210ULL + index_value;
+        state.gpr(reg) = initial32;
+        state.write_gpr(reg, X64GprWidth::Bits32, value32);
+        all_32_bit_writes_zero_extend &=
+            state.read_gpr(reg, X64GprWidth::Bits64) == value32 &&
+            state.read_gpr(reg, X64GprWidth::Bits32) == value32;
+
+        const auto initial16 = 0xFEDCBA9876540000ULL |
+                               (index_value << 8) |
+                               0x5AULL;
+        const auto value16 = 0xA500ULL | index_value;
+        const auto expected16 = (initial16 & ~0xFFFFULL) | value16;
+        state.gpr(reg) = initial16;
+        state.write_gpr(reg, X64GprWidth::Bits16, value16);
+        all_16_bit_writes_preserve_upper_bits &=
+            state.read_gpr(reg, X64GprWidth::Bits64) == expected16 &&
+            state.read_gpr(reg, X64GprWidth::Bits16) == value16;
+
+        const auto initial8 = 0xFEDCBA9876543200ULL | index_value;
+        const auto value8 = 0xC0ULL + index_value;
+        const auto expected8 = (initial8 & ~0xFFULL) | value8;
+        state.gpr(reg) = initial8;
+        state.write_gpr(reg, X64GprWidth::Bits8, value8);
+        all_8_bit_writes_preserve_other_bits &=
+            state.read_gpr(reg, X64GprWidth::Bits64) == expected8 &&
+            state.read_gpr(reg, X64GprWidth::Bits8) == value8;
+    }
+
+    check(all_64_bit_accesses_match,
+          "64-bit GPR reads and writes work for all 16 registers");
+    check(all_32_bit_writes_zero_extend,
+          "32-bit writes zero-extend for all 16 registers");
+    check(all_16_bit_writes_preserve_upper_bits,
+          "16-bit writes preserve upper bits for all 16 registers");
+    check(all_8_bit_writes_preserve_other_bits,
+          "8-bit writes preserve other bits for all 16 registers");
 }
 
 void test_cpu_execution_hardening() {
@@ -331,6 +469,8 @@ int main() {
     check(!parse_profile("unknown", parsed), "reject unknown profile");
 
     test_x64_cpu_state();
+    test_x64_register_views();
+    test_x64_register_views_all_registers();
     test_cpu_execution_hardening();
     test_cpu_program_lifecycle();
 
