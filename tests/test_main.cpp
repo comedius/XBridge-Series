@@ -6,10 +6,11 @@
 #include "xbridge/cpu/x64_instruction_interpreter.hpp"
 #include "xbridge/memory/memory.hpp"
 #include "xbridge/host/execution_policy.hpp"
+#include <span>
 #include <cstddef>
 #include <iostream>
-#include <limits>
 #include <sstream>
+#include <limits>
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
@@ -1110,6 +1111,60 @@ void test_cpu_execution_hardening() {
           "repeated fetch failure leaves CPU state unchanged");
 }
 
+void test_x64_instruction_decoder() {
+    using namespace xbridge::cpu;
+
+    // NOP wird korrekt erkannt, Instruktionslänge beträgt 1 Byte
+    {
+        const std::uint8_t nop[] = {0x90};
+        const auto result = decode_x64_instruction(nop);
+        check(result.status == X64DecodeStatus::Ok, "NOP decode status is Ok");
+        check(result.opcode == 0x90, "NOP decode opcode is 0x90");
+        check(result.length == 1, "NOP decode length is 1");
+    }
+
+    // Zusätzliche Bytes nach NOP werden nicht als Teil der NOP interpretiert
+    {
+        const std::uint8_t nop_with_tail[] = {0x90, 0x00, 0x00};
+        const auto result = decode_x64_instruction(nop_with_tail);
+        check(result.status == X64DecodeStatus::Ok, "NOP with trailing bytes status is Ok");
+        check(result.length == 1, "NOP with trailing bytes length is 1");
+    }
+
+    // Leere Eingabe wird korrekt behandelt (std::span)
+    {
+        std::span<const std::uint8_t> empty{};
+        const auto result = decode_x64_instruction(empty);
+        check(result.status == X64DecodeStatus::EmptyInput, "empty input status is EmptyInput");
+        check(result.length == 0, "empty input length is 0");
+    }
+
+    // Unbekannter Opcode wird korrekt behandelt (keine Exception)
+    {
+        const std::uint8_t unknown[] = {0x00};
+        const auto result = decode_x64_instruction(unknown);
+        check(result.status == X64DecodeStatus::UnknownOpcode, "unknown opcode status is UnknownOpcode");
+        check(result.opcode == 0x00, "unknown opcode preserved");
+        check(result.length == 0, "unknown opcode length is 0");
+    }
+
+    // Decoder verändert keinen CPU-Zustand (state-los)
+    {
+        X64CpuState state;
+        state.gpr(X64GeneralRegister::Rax) = 0xDEADBEEFCAFEF00DULL;
+        state.rip = 0x1234ULL;
+
+        const std::uint8_t nop[] = {0x90};
+        const auto result = decode_x64_instruction(nop);
+
+        check(state.gpr(X64GeneralRegister::Rax) == 0xDEADBEEFCAFEF00DULL,
+              "decoder does not modify general registers");
+        check(state.rip == 0x1234ULL, "decoder does not modify RIP");
+        check(result.status == X64DecodeStatus::Ok,
+              "decoder returns Ok independent of CPU state");
+    }
+}
+
 void test_cpu_program_lifecycle() {
     using namespace xbridge;
 
@@ -1215,6 +1270,7 @@ int main() {
     test_x64_interpreter_mov_memory_address_above_32bit();
     test_x64_interpreter_memory_error_no_state_mutation();
     test_x64_interpreter_error_no_state_mutation();
+    test_x64_instruction_decoder();
     test_cpu_execution_hardening();
     test_cpu_program_lifecycle();
 

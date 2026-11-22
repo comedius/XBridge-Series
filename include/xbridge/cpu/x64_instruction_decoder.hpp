@@ -51,6 +51,13 @@ struct X64ModRM {
     std::uint8_t mod = 0; // 0-3 (Adressierungsmodus)
     std::uint8_t reg = 0; // 0-7 (Register oder Opcode-Erweiterung)
     std::uint8_t rm = 0;  // 0-7 (Operand oder Speicheradresse)
+// Ok:        ein unterstützter Opcode wurde erfolgreich dekodiert.
+// EmptyInput: die Eingabe enthielt keine Bytes.
+// UnknownOpcode: der erste Byte ist kein bekannter (unterstützter) Opcode.
+enum class X64DecodeStatus : std::uint8_t {
+    Ok,
+    EmptyInput,
+    UnknownOpcode
 };
 
 // Strukturierte Darstellung einer dekodierten x64-Instruktion.
@@ -73,6 +80,18 @@ struct DecodedInstruction {
 // Unterstützte Instruktionen: NOP (0x90), MOV (Register/Immediate, Register/Register,
 // Register<->Speicher) mit REX-Präfixen.
 // Bei Fehlern wird ein definierter Status zurückgegeben, keine Exceptions.
+// Im Sprint-8-Umfang wird ausschließlich NOP (0x90) unterstützt.
+struct DecodedInstruction {
+    X64DecodeStatus status;
+    std::uint8_t opcode;     // roher Opcode-Byte (nur bei Ok / UnknownOpcode aussagekräftig)
+    std::size_t length;      // Instruktionslänge in Bytes (nur bei Ok aussagekräftig)
+};
+
+// Dekodiert die erste x64-Instruktion aus dem gegebenen Byte-Span.
+// Unterstützt aktuell nur NOP (0x90).
+// Bei leerer Eingabe wird Status::EmptyInput zurückgegeben.
+// Bei unbekanntem Opcode wird Status::UnknownOpcode zurückgegeben.
+// Es werden keine Exceptions für unbekannte Opcodes geworfen.
 [[nodiscard]] DecodedInstruction decode_x64_instruction(
     std::span<const std::uint8_t> bytes) noexcept;
 

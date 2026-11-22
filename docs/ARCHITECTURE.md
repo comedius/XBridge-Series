@@ -112,6 +112,10 @@ CPU-Zustand. Dekodierung und Ausführung sind sauber getrennt.
 - R: Erweitertes ModR/M reg-Feld (Register R8–R15 als Ziel)
 - B: Erweitertes ModR/M r/m- oder Opcode-Register-Feld (Register R8–R15 als Quelle/Ziel)
 - X: Wird erkannt, aber nicht verwendet (keine SIB-Unterstützung in Sprint 8)
+CPU-Zustand.
+
+**Unterstützter Opcode**
+- `NOP` (`0x90`) → `status == Ok`, `length == 1`, `opcode == 0x90`
 
 **Fehlerbehandlung**
 - Leere Eingabe: `status == EmptyInput`, `length == 0`, keine Ausnahme.
@@ -167,6 +171,25 @@ Der Interpreter ist die Referenzimplementierung (kein JIT).
 - Keine privilegierten Instruktionen.
 - Keine Xbox-spezifischen CPU-Eigenschaften.
 - Kein JIT.
+- Es werden keine Exceptions für unbekannte Opcodes geworfen.
+
+**Schnittstelle**
+- Eingabetyp: `std::span<const std::uint8_t>`
+- Rückgabetyp: `DecodedInstruction` (Felder: `status`, `opcode`, `length`)
+- Status-Enum: `X64DecodeStatus { Ok, EmptyInput, UnknownOpcode }`
+- Header: `include/xbridge/cpu/x64_instruction_decoder.hpp`
+- Implementation: `src/cpu/x64_instruction_decoder.cpp`
+
+**Aktuelle Einschränkungen (Sprint 8)**
+- Keine REX-Präfixe.
+- Keine weiteren Opcodes neben NOP.
+- Keine Instruktionsausführung (kein Interpreter, kein JIT).
+- Kein SIMD/FPU.
+- Keine Xbox-spezifischen CPU-Eigenschaften.
+
+**Ausblick**
+Eine Instruktionsausführung, REX-Präfixe und weitere Opcodes werden in späteren
+Sprints adressiert.
 
 ### TestCpu state and execution contract
 
