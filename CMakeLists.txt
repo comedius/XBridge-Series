@@ -11,6 +11,8 @@ add_library(xbridge_core
     src/core/config.cpp
     src/core/runtime.cpp
     src/cpu/test_cpu.cpp
+    src/cpu/x64_instruction_decoder.cpp
+    src/cpu/x64_instruction_interpreter.cpp
     src/memory/memory.cpp
     src/profiles/hardware_profile.cpp
     src/host/execution_policy.cpp

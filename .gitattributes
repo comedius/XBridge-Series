@@ -1,0 +1,7 @@
+
+# Einheitliche Zeilenenden im Repository
+* text=auto eol=lf
+
+# Windows-Skripte verwenden CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf

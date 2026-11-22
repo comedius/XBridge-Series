@@ -90,6 +90,77 @@ A future x86-64 engine must have:
 - tests for each supported instruction form;
 - differential tests against a trusted reference where lawful and practical.
 
+### x64 Instruction Decoder (Sprint 8)
+
+**Aufgabe**
+Dekodiert x86-64/AMD64-Instruction-Bytes in eine explizite, strukturierte Darstellung.
+Der Decoder ist state-los, arbeitet unabhängig von `X64CpuState` und verändert keinen
+CPU-Zustand. Dekodierung und Ausführung sind sauber getrennt.
+
+**Unterstützte Opcodes und Encodings**
+- `NOP` (`0x90`) → `status == Ok`, `length == 1`, `opcode == 0x90`. REX-Präfixe vor NOP
+  werden akzeptiert und ignoriert.
+- `MOV r64/r32, imm64/imm32` (`0xB8 + reg`, optional mit REX.W für 64-bit)
+- `MOV r64/r32, r64/r32` (`0x89 /r` bzw. `0x8B /r` mit ModR/M `mod == 11`)
+- `MOV r64/r32, m64/m32` und `MOV m64/m32, r64/r32` (`0x89 /r` bzw. `0x8B /r`
+  mit ModR/M `mod != 11`, einfache Adressierung ohne SIB und ohne Displacement)
+
+**REX-Präfixe (0x40–0x4F)**
+- W: 64-bit Operandengröße
+- R: Erweitertes ModR/M reg-Feld (Register R8–R15 als Ziel)
+- B: Erweitertes ModR/M r/m- oder Opcode-Register-Feld (Register R8–R15 als Quelle/Ziel)
+- X: Wird erkannt, aber nicht verwendet (keine SIB-Unterstützung in Sprint 8)
+
+**Fehlerbehandlung**
+- Leere Eingabe: `status == EmptyInput`, `length == 0`, keine Ausnahme.
+- Unbekannter Opcode: `status == UnknownOpcode`, `length == 0`, keine Ausnahme.
+- Ungültige Präfix-/Encoding-Kombination: `status == InvalidEncoding`, keine Ausnahme.
+- Unvollständige Eingabe (truncated): `status == TruncatedInput`, keine Ausnahme.
+- Es werden keine Exceptions für Dekodierfehler geworfen.
+
+**Schnittstelle**
+- Eingabetyp: `std::span<const std::uint8_t>`
+- Rückgabetyp: `DecodedInstruction` (Felder: `status`, `opcode`, `length`,
+  `operand_size`, `rex`, `dest_reg`, `src_reg`, `memory_operand`,
+  `displacement`, `immediate`, `immediate_size`)
+- Status-Enum: `X64DecodeStatus { Ok, EmptyInput, UnknownOpcode, InvalidEncoding, TruncatedInput }`
+- Header: `include/xbridge/cpu/x64_instruction_decoder.hpp`
+- Implementation: `src/cpu/x64_instruction_decoder.cpp`
+
+### x64 Instruction Interpreter (Sprint 8)
+
+**Aufgabe**
+Führt dekodierte x64-Instruktionen auf `X64CpuState` und `GuestMemory` aus.
+Der Interpreter ist die Referenzimplementierung (kein JIT).
+
+**Unterstützte Operationen**
+- NOP: RIP um Instruktionslänge vorantreiben.
+- MOV Register, Immediate: Register setzen (32-bit schreibt zero-extends auf 64-bit).
+- MOV Register zu Register: Quellregister in Zielregister kopieren.
+- MOV zwischen Register und Speicher: Little-Endian Lade-/Speicherzugriff.
+
+**Fehlerverhalten**
+- Speicherzugriff außerhalb der Grenzen: `std::out_of_range` von `GuestMemory`
+  wird abgefangen, `X64ExecuteStatus::MemoryAccessError` zurückgegeben.
+- Bei Fehlern wird keinerlei CPU-Zustand oder Speicher verändert.
+- Nicht ausführbare Dekodierergebnisse (TruncatedInput, UnknownOpcode, etc.)
+  werden als No-op behandelt.
+
+**Schnittstelle**
+- Header: `include/xbridge/cpu/x64_instruction_interpreter.hpp`
+- Implementation: `src/cpu/x64_instruction_interpreter.cpp`
+- Funktion: `execute_instruction(DecodedInstruction, X64CpuState&, GuestMemory&) noexcept`
+
+**Aktuelle Einschränkungen (Sprint 8)**
+- Keine REX-Präfixe für 8-bit Operanden (keine AH/BH/CH/DH High-Byte Register).
+- Keine SIB-Byte Unterstützung.
+- Kein Displacement bei Speicheroperanden (außer implicit 0).
+- Keine Instruktionsausführung für FLAGS-Bezeichnungen.
+- Kein SIMD/FPU.
+- Keine privilegierten Instruktionen.
+- Keine Xbox-spezifischen CPU-Eigenschaften.
+- Kein JIT.
+
 ### TestCpu state and execution contract
 
 `TestCpu` is a synthetic test ISA, not an Xbox or x86-64 CPU. `load_program()`
