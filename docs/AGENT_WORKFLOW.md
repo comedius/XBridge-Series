@@ -102,7 +102,7 @@ Required evidence for a completed package:
 - reviewer verdict with file:line references;
 - unresolved questions.
 
-Build/debug verification follows `AGENTS.md`. The VS2026-versus-VS2022 preset discrepancy is resolved: `windows-debug` uses `Visual Studio 18 2026`, the original line is kept in `CMakePresets.json.backup`, and configure/build/CTest were executed successfully with exit `0` using the absolute VS2026 executables recorded in `docs/AGENT_TASKS.md`. Plain `cmake`/`ctest` resolution in other shells remains `unknown`.
+Build/debug verification follows `AGENTS.md`. The VS2026-versus-VS2022 preset discrepancy is resolved: `windows-debug` uses `Visual Studio 18 2026`, and configure/build/CTest were executed successfully with exit `0` using the absolute VS2026 executables recorded in `docs/AGENT_TASKS.md`. The original VS2022 line is preserved only in a local, unversioned `CMakePresets.json.backup`; that file is not part of the repository and is not published through any branch or pull request. The backup file remains excluded from publication. Plain `cmake`/`ctest` resolution in other shells remains `unknown`.
 
 ## Evidence labels
 
