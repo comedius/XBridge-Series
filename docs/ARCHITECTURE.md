@@ -110,7 +110,7 @@ CPU-Zustand. Dekodierung und Ausführung sind sauber getrennt.
 
 **REX-Präfixe (0x40–0x4F)**
 - W: 64-bit Operandengröße
-- R: Erweitertes ModR/M reg-Feld (Register R8–R15 als Ziel)
+- R: Erweitertes ModR/M reg-Feld (Register R8–R15; ob Quelle oder Ziel hängt vom Opcode ab)
 - B: Erweitertes ModR/M r/m- oder Opcode-Register-Feld (Register R8–R15 als Quelle/Ziel)
 - X: Wird erkannt, aber nicht verwendet (keine SIB-Unterstützung in Sprint 8)
 

@@ -130,6 +130,7 @@ void parse_modrm(std::uint8_t byte, X64ModRM& modrm) noexcept {
         // 8-bit Varianten werden nicht unterstützt (keine REX, kein Operand-Size-Override)
         if (opcode == kMovRm8R8 || opcode == kMovR8Rm8) {
             result.status = X64DecodeStatus::UnknownOpcode;
+            result.length = offset + 1;
             return result;
         }
 

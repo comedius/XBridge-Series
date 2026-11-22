@@ -430,6 +430,54 @@ void test_x64_decoder_invalid_encoding() {
           "MOV r8 variant: UnknownOpcode");
 }
 
+void test_x64_decoder_8bit_mov_rejected() {
+    using namespace xbridge::cpu;
+
+    // 0x88 (MOV r/m8, r8) ohne REX: UnknownOpcode, Länge 1 (nur Opcode)
+    {
+        const std::uint8_t bytes[] = {0x88, 0xC0};
+        const auto result = decode_x64_instruction(bytes);
+        check(result.status == X64DecodeStatus::UnknownOpcode,
+              "0x88 without REX: status UnknownOpcode");
+        check(result.opcode == 0x88, "0x88 without REX: opcode 0x88");
+        check(result.length == 1, "0x88 without REX: length 1");
+    }
+
+    // 0x8A (MOV r8, r/m8) ohne REX: UnknownOpcode, Länge 1 (nur Opcode)
+    {
+        const std::uint8_t bytes[] = {0x8A, 0xC0};
+        const auto result = decode_x64_instruction(bytes);
+        check(result.status == X64DecodeStatus::UnknownOpcode,
+              "0x8A without REX: status UnknownOpcode");
+        check(result.opcode == 0x8A, "0x8A without REX: opcode 0x8A");
+        check(result.length == 1, "0x8A without REX: length 1");
+    }
+
+    // 0x48 0x88 0xC0: UnknownOpcode, Opcode 0x88, Länge 2 (REX + Opcode, kein ModR/M)
+    {
+        const std::uint8_t bytes[] = {0x48, 0x88, 0xC0};
+        const auto result = decode_x64_instruction(bytes);
+        check(result.status == X64DecodeStatus::UnknownOpcode,
+              "0x48 0x88 0xC0: status UnknownOpcode");
+        check(result.opcode == 0x88, "0x48 0x88 0xC0: opcode 0x88");
+        check(result.length == 2, "0x48 0x88 0xC0: length 2");
+        check(result.rex.present, "0x48 0x88 0xC0: rex present");
+        check(result.rex.w, "0x48 0x88 0xC0: rex.w set");
+    }
+
+    // 0x41 0x8A 0xC0: UnknownOpcode, Opcode 0x8A, Länge 2 (REX + Opcode, kein ModR/M)
+    {
+        const std::uint8_t bytes[] = {0x41, 0x8A, 0xC0};
+        const auto result = decode_x64_instruction(bytes);
+        check(result.status == X64DecodeStatus::UnknownOpcode,
+              "0x41 0x8A 0xC0: status UnknownOpcode");
+        check(result.opcode == 0x8A, "0x41 0x8A 0xC0: opcode 0x8A");
+        check(result.length == 2, "0x41 0x8A 0xC0: length 2");
+        check(result.rex.present, "0x41 0x8A 0xC0: rex present");
+        check(result.rex.b, "0x41 0x8A 0xC0: rex.b set");
+    }
+}
+
 void test_x64_decoder_no_state_mutation() {
     using namespace xbridge::cpu;
 
@@ -1253,6 +1301,7 @@ int main() {
     test_x64_decoder_unknown_opcode();
     test_x64_decoder_truncated_input();
     test_x64_decoder_invalid_encoding();
+    test_x64_decoder_8bit_mov_rejected();
     test_x64_decoder_no_state_mutation();
     test_x64_interpreter_nop();
     test_x64_interpreter_mov_imm32();
