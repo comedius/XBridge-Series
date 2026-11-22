@@ -151,16 +151,30 @@ void parse_modrm(std::uint8_t byte, X64ModRM& modrm) noexcept {
         }
 
         // Speicheroperand (mod != 3)
-        // Nur einfache Adressierung ohne SIB und ohne Displacement unterstützen:
-        // mod == 0b00 und rm != 0b101 und rm != 0b110 (kein SIB, kein disp32)
-        if (modrm.mod == 0b00 && modrm.rm != 0b101 && modrm.rm != 0b110) {
+        // Unterstützte einfache Adressierung ohne SIB und ohne Displacement:
+        // mod == 0b00 mit rm in {000-011, 110-111} (einfache Register-Indirektadressierung)
+        // mod == 0b00 mit rm == 100 benötigt ein SIB-Byte → nicht unterstützt
+        // mod == 0b00 mit rm == 101 benötigt RIP-relative Displacement → nicht unterstützt
+        if (modrm.mod == 0b00) {
+            if (modrm.rm == 0b100) {
+                // SIB-Byte erforderlich
+                result.status = X64DecodeStatus::InvalidEncoding;
+                return result;
+            }
+            if (modrm.rm == 0b101) {
+                // RIP-relative Adressierung mit Displacement erforderlich
+                result.status = X64DecodeStatus::InvalidEncoding;
+                return result;
+            }
+            // rm in {000-011, 110-111}: einfache Register-Indirektadressierung
             result.memory_operand = true;
             result.displacement = 0;
             if (opcode == kMovRm32R32) {
-                // MOV r/m, r: dest = memory, src = reg
+                // MOV r/m, r: dest = memory (rm-Register als Adresse), src = reg
+                result.dest_reg = make_register_ref(rm_base, rex.b);
                 result.src_reg = make_register_ref(reg_base, rex.r);
             } else {
-                // MOV r, r/m: dest = reg, src = memory
+                // MOV r, r/m: dest = reg, src = memory (rm-Register als Adresse)
                 result.dest_reg = make_register_ref(reg_base, rex.r);
                 result.src_reg = make_register_ref(rm_base, rex.b);
             }
@@ -169,7 +183,7 @@ void parse_modrm(std::uint8_t byte, X64ModRM& modrm) noexcept {
             return result;
         }
 
-        // Alle anderen ModR/M-Kombinationen (SIB, Displacement, etc.) nicht unterstützt
+        // Alle anderen ModR/M-Kombinationen (mod != 0 mit Displacement, SIB, etc.) nicht unterstützt
         result.status = X64DecodeStatus::InvalidEncoding;
         return result;
     }

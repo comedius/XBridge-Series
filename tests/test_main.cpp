@@ -619,6 +619,310 @@ void test_x64_interpreter_memory_bounds() {
     }
 }
 
+void test_x64_interpreter_mov_memory_registers() {
+    using namespace xbridge::cpu;
+
+    memory::GuestMemory memory(256);
+    X64CpuState state;
+    state.rip = 0x1000;
+    state.gpr(X64GeneralRegister::Rcx) = 0x00000020; // Adresse 32
+    state.gpr(X64GeneralRegister::Rsi) = 0x00000040; // Adresse 64
+    state.gpr(X64GeneralRegister::Rdx) = 0xCAFEBABE;
+    state.gpr(X64GeneralRegister::Rax) = 0xDEADBEEF;
+
+    // MOV [RCX], EDX: 0x89 0x11 (mod=00, reg=010=EDX, rm=001=RCX)
+    {
+        const std::uint8_t bytes[] = {0x89, 0x11};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::Ok, "MOV [RCX], EDX: decode Ok");
+        check(instr.memory_operand, "MOV [RCX], EDX: memory operand");
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::Ok, "MOV [RCX], EDX: execute Ok");
+        check(memory.read32(32) == 0xCAFEBABE,
+              "MOV [RCX], EDX: memory at address 32 = 0xCAFEBABE");
+    }
+
+    // MOV [RSI], ECX: 0x89 0x0E (mod=00, reg=001=ECX, rm=110=RSI)
+    // Schreibt RCX (0x00000020) nach [RSI] = Adresse 64
+    {
+        const std::uint8_t bytes[] = {0x89, 0x0E};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::Ok, "MOV [RSI], ECX: decode Ok");
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::Ok, "MOV [RSI], ECX: execute Ok");
+        check(memory.read32(64) == 0x00000020,
+              "MOV [RSI], ECX: memory at address 64 = 0x00000020");
+    }
+
+    // MOV ECX, [RSI]: 0x8B 0x0E (mod=00, reg=001=ECX, rm=110=RSI)
+    // Liest von [RSI] = Adresse 64 (dort steht nun 0x00000020)
+    {
+        state.gpr(X64GeneralRegister::Rcx) = 0;
+        const std::uint8_t bytes[] = {0x8B, 0x0E};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::Ok, "MOV ECX, [RSI]: decode Ok");
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::Ok, "MOV ECX, [RSI]: execute Ok");
+        check(state.gpr(X64GeneralRegister::Rcx) == 0x00000020,
+              "MOV ECX, [RSI]: RCX = 0x00000020");
+    }
+}
+
+void test_x64_interpreter_mov_memory_rex_b() {
+    using namespace xbridge::cpu;
+
+    memory::GuestMemory memory(256);
+    X64CpuState state;
+    state.rip = 0x1000;
+    state.gpr(X64GeneralRegister::R8) = 0x00000080; // Adresse 128
+    state.gpr(X64GeneralRegister::Rdx) = 0xA1B2C3D4;
+
+    // MOV [R8], EDX mit REX.B: 0x41 0x89 0x10
+    // REX.B=1, mod=00, reg=010=EDX, rm=000=R8
+    {
+        const std::uint8_t bytes[] = {0x41, 0x89, 0x10};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::Ok, "MOV [R8], EDX: decode Ok");
+        check(instr.memory_operand, "MOV [R8], EDX: memory operand");
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::Ok, "MOV [R8], EDX: execute Ok");
+        check(memory.read32(128) == 0xA1B2C3D4,
+              "MOV [R8], EDX: memory at address 128 = 0xA1B2C3D4");
+    }
+
+    // MOV EDX, [R8] mit REX.B: 0x41 0x8B 0x10
+    // REX.B=1, mod=00, reg=010=EDX, rm=000=R8
+    {
+        state.gpr(X64GeneralRegister::Rdx) = 0;
+        const std::uint8_t bytes[] = {0x41, 0x8B, 0x10};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::Ok, "MOV EDX, [R8]: decode Ok");
+        check(instr.operand_size == X64OperandSize::Bits32,
+              "MOV EDX, [R8]: operand size Bits32");
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::Ok, "MOV EDX, [R8]: execute Ok");
+        check(state.gpr(X64GeneralRegister::Rdx) == 0xA1B2C3D4,
+              "MOV EDX, [R8]: RDX = 0xA1B2C3D4");
+    }
+
+    // MOV [RAX], RCX (64-bit) gefolgt von MOV R9, [RAX] (64-bit) mit REX.W+REX.R
+    state.gpr(X64GeneralRegister::Rax) = 0x00000010; // Adresse 16
+    state.gpr(X64GeneralRegister::Rcx) = 0x1122334455667788ULL;
+
+    // MOV [RAX], RCX (64-bit): 0x48 0x89 0x08
+    {
+        const std::uint8_t bytes[] = {0x48, 0x89, 0x08};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::Ok, "MOV [RAX], RCX (64): decode Ok");
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::Ok, "MOV [RAX], RCX (64): execute Ok");
+    }
+
+    // MOV R9, [RAX] (64-bit): 0x4C 0x8B 0x08
+    // REX.W=1, REX.R=1, REX.B=0, mod=00, reg=001 (mit REX.R → R9), rm=000 (RAX)
+    // 0x4C = 01001100: W=1, R=1, X=0, B=0
+    {
+        state.gpr(X64GeneralRegister::R9) = 0;
+        const std::uint8_t bytes[] = {0x4C, 0x8B, 0x08};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::Ok, "MOV R9, [RAX]: decode Ok");
+        check(instr.operand_size == X64OperandSize::Bits64,
+              "MOV R9, [RAX]: operand size Bits64");
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::Ok, "MOV R9, [RAX]: execute Ok");
+        check(state.gpr(X64GeneralRegister::R9) == 0x1122334455667788ULL,
+              "MOV R9, [RAX]: R9 = 0x1122334455667788");
+    }
+}
+
+void test_x64_interpreter_mov_memory_sib_rejected() {
+    using namespace xbridge::cpu;
+
+    memory::GuestMemory memory(256);
+    X64CpuState state;
+    state.rip = 0x1000;
+    state.gpr(X64GeneralRegister::Rax) = 0x00000010;
+    state.gpr(X64GeneralRegister::Rcx) = 0xDEADBEEF;
+
+    // SIB-Encoding: mod=00, rm=100 (0x89 0x04) → InvalidEncoding
+    {
+        const std::uint8_t bytes[] = {0x89, 0x04};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::InvalidEncoding,
+              "SIB encoding: status InvalidEncoding");
+    }
+}
+
+void test_x64_interpreter_mov_memory_rip_relative_rejected() {
+    using namespace xbridge::cpu;
+
+    memory::GuestMemory memory(256);
+    X64CpuState state;
+    state.rip = 0x1000;
+    state.gpr(X64GeneralRegister::Rax) = 0x00000010;
+    state.gpr(X64GeneralRegister::Rcx) = 0xDEADBEEF;
+
+    // RIP-relative: mod=00, rm=101 (0x89 0x05) → InvalidEncoding
+    {
+        const std::uint8_t bytes[] = {0x89, 0x05};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::InvalidEncoding,
+              "RIP-relative encoding: status InvalidEncoding");
+    }
+}
+
+void test_x64_interpreter_mov_memory_64bit() {
+    using namespace xbridge::cpu;
+
+    memory::GuestMemory memory(256);
+    X64CpuState state;
+    state.rip = 0x1000;
+    state.gpr(X64GeneralRegister::Rax) = 0x00000010; // Adresse 16
+    state.gpr(X64GeneralRegister::Rcx) = 0x1122334455667788ULL;
+
+    // MOV [RAX], RCX (64-bit): 0x48 0x89 0x08 (REX.W=1, mod=00, reg=001=RCX, rm=000=RAX)
+    {
+        const std::uint8_t bytes[] = {0x48, 0x89, 0x08};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::Ok, "MOV [RAX], RCX (64): decode Ok");
+        check(instr.operand_size == X64OperandSize::Bits64, "MOV [RAX], RCX (64): operand size Bits64");
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::Ok, "MOV [RAX], RCX (64): execute Ok");
+        // Little-endian Leseprüfung aller 8 Bytes
+        check(memory.read8(16) == 0x88 && memory.read8(17) == 0x77 &&
+                  memory.read8(18) == 0x66 && memory.read8(19) == 0x55 &&
+                  memory.read8(20) == 0x44 && memory.read8(21) == 0x33 &&
+                  memory.read8(22) == 0x22 && memory.read8(23) == 0x11,
+              "MOV [RAX], RCX (64): alle 8 Bytes korrekt im Speicher");
+    }
+
+    // MOV RDX, [RAX] (64-bit): 0x48 0x8B 0x10 (REX.W=1, mod=00, reg=010=RDX, rm=000=RAX)
+    {
+        state.gpr(X64GeneralRegister::Rdx) = 0;
+        const std::uint8_t bytes[] = {0x48, 0x8B, 0x10};
+        const auto instr = decode_x64_instruction(bytes);
+        check(instr.status == X64DecodeStatus::Ok, "MOV RDX, [RAX] (64): decode Ok");
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::Ok, "MOV RDX, [RAX] (64): execute Ok");
+        check(state.gpr(X64GeneralRegister::Rdx) == 0x1122334455667788ULL,
+              "MOV RDX, [RAX] (64): RDX = 0x1122334455667788");
+    }
+}
+
+void test_x64_interpreter_mov_memory_64bit_write_atomic() {
+    using namespace xbridge::cpu;
+
+    memory::GuestMemory memory(16); // Nur 16 Bytes
+    X64CpuState state;
+    state.rip = 0x1000;
+    state.gpr(X64GeneralRegister::Rax) = 0x00000008; // Adresse 8
+    state.gpr(X64GeneralRegister::Rcx) = 0x1122334455667788ULL;
+
+    // MOV [RAX], RCX (64-bit) ab Adresse 8 schreibt Bytes 8-15 (gültig)
+    {
+        const std::uint8_t bytes[] = {0x48, 0x89, 0x08};
+        const auto instr = decode_x64_instruction(bytes);
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::Ok, "MOV [RAX], RCX (64) at boundary: status Ok");
+        check(memory.read8(15) == 0x11, "MOV [RAX], RCX (64): letztes Byte geschrieben");
+    }
+
+    // MOV [RAX], RCX (64-bit) ab Adresse 9 schreibt Bytes 9-16 (16 ist out of bounds)
+    // Muss MemoryAccessError liefern und keinerlei Teiländerung hinterlassen
+    state.gpr(X64GeneralRegister::Rax) = 0x00000009;
+    {
+        // Alle acht Zielbytes vor dem Versuch speichern
+        const auto byte8_before = memory.read8(8);
+        const auto byte9_before = memory.read8(9);
+        const auto byte10_before = memory.read8(10);
+        const auto byte11_before = memory.read8(11);
+        const auto byte12_before = memory.read8(12);
+        const auto byte13_before = memory.read8(13);
+        const auto byte14_before = memory.read8(14);
+        const auto byte15_before = memory.read8(15);
+
+        const std::uint8_t bytes[] = {0x48, 0x89, 0x08};
+        const auto instr = decode_x64_instruction(bytes);
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::MemoryAccessError,
+              "MOV [RAX], RCX (64) out of bounds: status MemoryAccessError");
+
+        // Keine einzige der acht Zielbytes darf verändert worden sein
+        check(memory.read8(8) == byte8_before, "MOV [RAX], RCX (64) out of bounds: byte 8 unchanged");
+        check(memory.read8(9) == byte9_before, "MOV [RAX], RCX (64) out of bounds: byte 9 unchanged");
+        check(memory.read8(10) == byte10_before, "MOV [RAX], RCX (64) out of bounds: byte 10 unchanged");
+        check(memory.read8(11) == byte11_before, "MOV [RAX], RCX (64) out of bounds: byte 11 unchanged");
+        check(memory.read8(12) == byte12_before, "MOV [RAX], RCX (64) out of bounds: byte 12 unchanged");
+        check(memory.read8(13) == byte13_before, "MOV [RAX], RCX (64) out of bounds: byte 13 unchanged");
+        check(memory.read8(14) == byte14_before, "MOV [RAX], RCX (64) out of bounds: byte 14 unchanged");
+        check(memory.read8(15) == byte15_before, "MOV [RAX], RCX (64) out of bounds: byte 15 unchanged");
+    }
+}
+
+void test_x64_interpreter_mov_memory_address_above_32bit() {
+    using namespace xbridge::cpu;
+
+    memory::GuestMemory memory(256);
+    X64CpuState state;
+    state.rip = 0x1000;
+    state.gpr(X64GeneralRegister::Rax) = 0x100000000ULL; // Über 32-Bit-Adressbereich
+    state.gpr(X64GeneralRegister::Rcx) = 0xDEADBEEF;
+
+    // Adresse > UINT32_MAX darf nicht stillschweigend gekürzt werden
+    {
+        const std::uint8_t bytes[] = {0x89, 0x08};
+        const auto instr = decode_x64_instruction(bytes);
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::MemoryAccessError,
+              "MOV [RAX], ECX above 32-bit: status MemoryAccessError");
+    }
+    check(state.gpr(X64GeneralRegister::Rax) == 0x100000000ULL,
+          "MOV [RAX], ECX above 32-bit: RAX unchanged");
+    check(state.rip == 0x1000,
+          "MOV [RAX], ECX above 32-bit: RIP unchanged");
+}
+
+void test_x64_interpreter_memory_error_no_state_mutation() {
+    using namespace xbridge::cpu;
+
+    memory::GuestMemory memory(16);
+    X64CpuState state;
+    state.rip = 0x1000;
+    state.gpr(X64GeneralRegister::Rax) = 0x0000000D; // Adresse 13 (out of bounds für 4-Byte-Zugriff)
+    state.gpr(X64GeneralRegister::Rcx) = 0xDEADBEEF;
+
+    // Speicher vor dem Versuch markieren
+    const auto rax_before = state.gpr(X64GeneralRegister::Rax);
+    const auto rcx_before = state.gpr(X64GeneralRegister::Rcx);
+    const auto rip_before = state.rip;
+    const auto byte12_before = memory.read8(12);
+    const auto byte13_before = memory.read8(13);
+    const auto byte14_before = memory.read8(14);
+    const auto byte15_before = memory.read8(15);
+
+    // MOV [RAX], ECX mit Adresse 13 (Bytes 13-16 out of bounds)
+    {
+        const std::uint8_t bytes[] = {0x89, 0x08};
+        const auto instr = decode_x64_instruction(bytes);
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(exec_status == X64ExecuteStatus::MemoryAccessError,
+              "MOV [RAX], ECX out of bounds: status MemoryAccessError");
+    }
+
+    // Keine Zustandsänderungen
+    check(state.gpr(X64GeneralRegister::Rax) == rax_before,
+          "MemoryAccessError: RAX unchanged");
+    check(state.gpr(X64GeneralRegister::Rcx) == rcx_before,
+          "MemoryAccessError: RCX unchanged");
+    check(state.rip == rip_before,
+          "MemoryAccessError: RIP unchanged");
+    // Keine Teiländerungen im Speicher
+    check(memory.read8(12) == byte12_before, "MemoryAccessError: byte 12 unchanged");
+    check(memory.read8(13) == byte13_before, "MemoryAccessError: byte 13 unchanged");
+    check(memory.read8(14) == byte14_before, "MemoryAccessError: byte 14 unchanged");
+    check(memory.read8(15) == byte15_before, "MemoryAccessError: byte 15 unchanged");
+}
+
 void test_x64_interpreter_error_no_state_mutation() {
     using namespace xbridge::cpu;
 
@@ -902,6 +1206,14 @@ int main() {
     test_x64_interpreter_mov_reg_to_reg_32bit_zero_extend();
     test_x64_interpreter_mov_memory_roundtrip();
     test_x64_interpreter_memory_bounds();
+    test_x64_interpreter_mov_memory_registers();
+    test_x64_interpreter_mov_memory_rex_b();
+    test_x64_interpreter_mov_memory_sib_rejected();
+    test_x64_interpreter_mov_memory_rip_relative_rejected();
+    test_x64_interpreter_mov_memory_64bit();
+    test_x64_interpreter_mov_memory_64bit_write_atomic();
+    test_x64_interpreter_mov_memory_address_above_32bit();
+    test_x64_interpreter_memory_error_no_state_mutation();
     test_x64_interpreter_error_no_state_mutation();
     test_cpu_execution_hardening();
     test_cpu_program_lifecycle();

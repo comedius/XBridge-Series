@@ -103,7 +103,9 @@ CPU-Zustand. Dekodierung und Ausführung sind sauber getrennt.
 - `MOV r64/r32, imm64/imm32` (`0xB8 + reg`, optional mit REX.W für 64-bit)
 - `MOV r64/r32, r64/r32` (`0x89 /r` bzw. `0x8B /r` mit ModR/M `mod == 11`)
 - `MOV r64/r32, m64/m32` und `MOV m64/m32, r64/r32` (`0x89 /r` bzw. `0x8B /r`
-  mit ModR/M `mod != 11`, einfache Adressierung ohne SIB und ohne Displacement)
+  mit ModR/M `mod == 0b00`, einfache Register-Indirektadressierung ohne SIB
+  und ohne Displacement; `rm == 100` (SIB) und `rm == 101` (RIP-relative)
+  werden als `InvalidEncoding` zurückgewiesen)
 
 **REX-Präfixe (0x40–0x4F)**
 - W: 64-bit Operandengröße
@@ -140,8 +142,13 @@ Der Interpreter ist die Referenzimplementierung (kein JIT).
 - MOV zwischen Register und Speicher: Little-Endian Lade-/Speicherzugriff.
 
 **Fehlerverhalten**
-- Speicherzugriff außerhalb der Grenzen: `std::out_of_range` von `GuestMemory`
-  wird abgefangen, `X64ExecuteStatus::MemoryAccessError` zurückgegeben.
+- Speicheradresse über UINT32_MAX: `MemoryAccessError` (kein stilles Truncating).
+- Speicherzugriff außerhalb der Grenzen: vollständiger Bereich wird vor dem Zugriff
+  validiert; bei Verletzung `MemoryAccessError` ohne jegliche Zustandsänderung.
+- 64-Bit-Schreibzugriffe: alle 8 Bytes werden vor dem Schreiben validiert;
+  bei Fehler bleiben weder CPU-Zustand noch Speicher verändert.
+- `std::out_of_range` von `GuestMemory` wird abgefangen,
+  `X64ExecuteStatus::MemoryAccessError` zurückgegeben.
 - Bei Fehlern wird keinerlei CPU-Zustand oder Speicher verändert.
 - Nicht ausführbare Dekodierergebnisse (TruncatedInput, UnknownOpcode, etc.)
   werden als No-op behandelt.

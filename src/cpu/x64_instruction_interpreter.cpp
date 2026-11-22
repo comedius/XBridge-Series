@@ -1,8 +1,27 @@
 #include "xbridge/cpu/x64_instruction_interpreter.hpp"
 
+#include <limits>
 #include <stdexcept>
 
 namespace xbridge::cpu {
+
+[[nodiscard]] bool is_address_range_valid(
+    std::uint64_t address,
+    std::size_t length,
+    const memory::GuestMemory& memory) noexcept
+{
+    if (address > static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max())) {
+        return false;
+    }
+    const auto addr32 = static_cast<std::uint32_t>(address);
+    if (static_cast<std::size_t>(addr32) > memory.size()) {
+        return false;
+    }
+    if (memory.size() - static_cast<std::size_t>(addr32) < length) {
+        return false;
+    }
+    return true;
+}
 
 [[nodiscard]] X64ExecuteStatus execute_instruction(
     const DecodedInstruction& instruction,
@@ -51,38 +70,49 @@ namespace xbridge::cpu {
             // Speicheradresse kommt aus dem rm-Register (dest_reg bei 0x89, src_reg bei 0x8B)
             const auto address_reg =
                 (instruction.opcode == 0x89) ? instruction.dest_reg : instruction.src_reg;
-            const auto address = static_cast<std::uint32_t>(state.gpr(address_reg.base));
+            const auto address = state.gpr(address_reg.base);
             if (instruction.opcode == 0x89) {
                 // MOV r/m, r: Speicher = Register
                 const auto value =
                     (operand_size == X64OperandSize::Bits64)
                         ? state.gpr(instruction.src_reg.base)
                         : static_cast<std::uint32_t>(state.gpr(instruction.src_reg.base));
+                const auto write_length =
+                    (operand_size == X64OperandSize::Bits64) ? 8ULL : 4ULL;
+                if (!is_address_range_valid(address, write_length, memory)) {
+                    return X64ExecuteStatus::MemoryAccessError;
+                }
                 try {
                     if (operand_size == X64OperandSize::Bits64) {
-                        // 64-bit Speicherzugang als 8x write8 (little-endian)
+                        // 64-bit Speicherzugang: vollständigen Bereich validieren,
+                        // dann 8x write8 (little-endian). Keine Teiländerung bei Fehler.
                         for (int i = 0; i < 8; ++i) {
-                            memory.write8(static_cast<std::uint32_t>(address + i),
+                            memory.write8(static_cast<std::uint32_t>(address + static_cast<std::uint64_t>(i)),
                                           static_cast<std::uint8_t>((value >> (8 * i)) & 0xFF));
                         }
                     } else {
-                        memory.write32(address, static_cast<std::uint32_t>(value));
+                        memory.write32(static_cast<std::uint32_t>(address), static_cast<std::uint32_t>(value));
                     }
                 } catch (const std::out_of_range&) {
                     return X64ExecuteStatus::MemoryAccessError;
                 }
             } else {
                 // MOV r, r/m: Register = Speicher
+                const auto read_length =
+                    (operand_size == X64OperandSize::Bits64) ? 8ULL : 4ULL;
+                if (!is_address_range_valid(address, read_length, memory)) {
+                    return X64ExecuteStatus::MemoryAccessError;
+                }
                 try {
                     std::uint64_t value = 0;
                     if (operand_size == X64OperandSize::Bits64) {
                         for (int i = 0; i < 8; ++i) {
                             value |= static_cast<std::uint64_t>(
-                                         memory.read8(static_cast<std::uint32_t>(address + i)))
+                                         memory.read8(static_cast<std::uint32_t>(address + static_cast<std::uint64_t>(i))))
                                      << (8 * i);
                         }
                     } else {
-                        value = memory.read32(address);
+                        value = memory.read32(static_cast<std::uint32_t>(address));
                     }
                     state.gpr(instruction.dest_reg.base) = value;
                 } catch (const std::out_of_range&) {
