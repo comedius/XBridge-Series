@@ -47,8 +47,6 @@ void parse_modrm(std::uint8_t byte, X64ModRM& modrm) noexcept {
     modrm.reg = (byte >> 3) & 0x07;
     modrm.rm = byte & 0x07;
 }
-// Einzige unterstützte Instruktion im Sprint-8-Umfang.
-constexpr std::uint8_t kNopOpcode = 0x90;
 
 } // namespace
 
@@ -194,29 +192,6 @@ constexpr std::uint8_t kNopOpcode = 0x90;
     result.status = X64DecodeStatus::UnknownOpcode;
     result.length = offset + 1;
     return result;
-    if (bytes.empty()) {
-        return DecodedInstruction{
-            .status = X64DecodeStatus::EmptyInput,
-            .opcode = 0x00,
-            .length = 0
-        };
-    }
-
-    const std::uint8_t opcode = bytes[0];
-
-    if (opcode == kNopOpcode) {
-        return DecodedInstruction{
-            .status = X64DecodeStatus::Ok,
-            .opcode = opcode,
-            .length = 1
-        };
-    }
-
-    return DecodedInstruction{
-        .status = X64DecodeStatus::UnknownOpcode,
-        .opcode = opcode,
-        .length = 0
-    };
 }
 
 } // namespace xbridge::cpu

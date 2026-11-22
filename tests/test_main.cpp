@@ -1145,7 +1145,7 @@ void test_x64_instruction_decoder() {
         const auto result = decode_x64_instruction(unknown);
         check(result.status == X64DecodeStatus::UnknownOpcode, "unknown opcode status is UnknownOpcode");
         check(result.opcode == 0x00, "unknown opcode preserved");
-        check(result.length == 0, "unknown opcode length is 0");
+        check(result.length == 1, "unknown opcode length is 1 (opcode byte consumed)");
     }
 
     // Decoder verändert keinen CPU-Zustand (state-los)
