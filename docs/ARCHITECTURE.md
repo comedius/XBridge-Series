@@ -90,6 +90,39 @@ A future x86-64 engine must have:
 - tests for each supported instruction form;
 - differential tests against a trusted reference where lawful and practical.
 
+### x64 Instruction Decoder (Sprint 8)
+
+**Aufgabe**
+Dekodiert x86-64/AMD64-Instruction-Bytes in eine explizite, strukturierte Darstellung.
+Der Decoder ist state-los, arbeitet unabhängig von `X64CpuState` und verändert keinen
+CPU-Zustand.
+
+**Unterstützter Opcode**
+- `NOP` (`0x90`) → `status == Ok`, `length == 1`, `opcode == 0x90`
+
+**Fehlerbehandlung**
+- Leere Eingabe: `status == EmptyInput`, `length == 0`, keine Ausnahme.
+- Unbekannter Opcode: `status == UnknownOpcode`, `length == 0`, keine Ausnahme.
+- Es werden keine Exceptions für unbekannte Opcodes geworfen.
+
+**Schnittstelle**
+- Eingabetyp: `std::span<const std::uint8_t>`
+- Rückgabetyp: `DecodedInstruction` (Felder: `status`, `opcode`, `length`)
+- Status-Enum: `X64DecodeStatus { Ok, EmptyInput, UnknownOpcode }`
+- Header: `include/xbridge/cpu/x64_instruction_decoder.hpp`
+- Implementation: `src/cpu/x64_instruction_decoder.cpp`
+
+**Aktuelle Einschränkungen (Sprint 8)**
+- Keine REX-Präfixe.
+- Keine weiteren Opcodes neben NOP.
+- Keine Instruktionsausführung (kein Interpreter, kein JIT).
+- Kein SIMD/FPU.
+- Keine Xbox-spezifischen CPU-Eigenschaften.
+
+**Ausblick**
+Eine Instruktionsausführung, REX-Präfixe und weitere Opcodes werden in späteren
+Sprints adressiert.
+
 ### TestCpu state and execution contract
 
 `TestCpu` is a synthetic test ISA, not an Xbox or x86-64 CPU. `load_program()`
