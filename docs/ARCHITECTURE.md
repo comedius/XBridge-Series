@@ -106,12 +106,33 @@ CPU-Zustand. Dekodierung und Ausführung sind sauber getrennt.
   mit ModR/M `mod == 0b00`, einfache Register-Indirektadressierung ohne SIB
   und ohne Displacement; `rm == 100` (SIB) und `rm == 101` (RIP-relative)
   werden als `InvalidEncoding` zurückgewiesen)
+- 8-bit MOV (`0x88`, `0x8a`) → `UnknownOpcode` (nicht unterstützt)
 
 **REX-Präfixe (0x40–0x4F)**
 - W: 64-bit Operandengröße
 - R: Erweitertes ModR/M reg-Feld (Register R8–R15 als Ziel)
 - B: Erweitertes ModR/M r/m- oder Opcode-Register-Feld (Register R8–R15 als Quelle/Ziel)
 - X: Wird erkannt, aber nicht verwendet (keine SIB-Unterstützung in Sprint 8)
+
+**Fehlerbehandlung**
+- Leere Eingabe: `EmptyInput`, `length == 0`, keine Ausnahme.
+- Unbekannter Opcode: `UnknownOpcode`, `length` umfasst die bis zum Opcode gelesenen
+  Bytes (inkl. REX-Präfixe), keine Ausnahme.
+- Ungültige Präfix-/Encoding-Kombination: `InvalidEncoding`, keine Ausnahme.
+  Dazu zählen `mod == 0b00, rm == 0b100` (SIB erforderlich) sowie
+  `mod == 0b00, rm == 0b101` (RIP-relative Adressierung erforderlich).
+- Unvollständige Eingabe: `TruncatedInput`, keine Ausnahme.
+- Keine Exceptions für Dekodierfehler.
+
+**Schnittstelle**
+- Eingabe: `std::span<const std::uint8_t>`
+- Rückgabe: `DecodedInstruction` mit Feldern `status`, `opcode`, `length`,
+  `operand_size`, `rex`, `dest_reg`, `src_reg`, `memory_operand`, `displacement`,
+  `immediate`, `immediate_size`
+- Status-Enum: `X64DecodeStatus { Ok, EmptyInput, UnknownOpcode, InvalidEncoding,
+  TruncatedInput }`
+- Header: `include/xbridge/cpu/x64_instruction_decoder.hpp`
+- Implementation: `src/cpu/x64_instruction_decoder.cpp`
 
 ### x64 Instruction Interpreter (Sprint 8)
 
@@ -140,10 +161,11 @@ Der Interpreter ist die Referenzimplementierung (kein JIT).
 **Schnittstelle**
 - Header: `include/xbridge/cpu/x64_instruction_interpreter.hpp`
 - Implementation: `src/cpu/x64_instruction_interpreter.cpp`
-- Funktion: `execute_instruction(DecodedInstruction, X64CpuState&, GuestMemory&) noexcept`
+- Funktion: `execute_instruction(const DecodedInstruction&, X64CpuState&, GuestMemory&) noexcept`
 
 **Aktuelle Einschränkungen (Sprint 8)**
 - Keine REX-Präfixe für 8-bit Operanden (keine AH/BH/CH/DH High-Byte Register).
+- Keine 8-bit MOV (`0x88`, `0x8a`).
 - Keine SIB-Byte Unterstützung.
 - Kein Displacement bei Speicheroperanden (außer implicit 0).
 - Keine Instruktionsausführung für FLAGS-Bezeichnungen.
