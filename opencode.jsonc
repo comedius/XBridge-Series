@@ -1,0 +1,99 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "default_agent": "coordinator",
+
+  // Relative to the project checkout; new worktrees stay beside the project on the same drive.
+  "worktree": {
+    "directory": "../worktrees"
+  },
+
+  "instructions": [
+    "docs/AGENT_WORKFLOW.md"
+  ],
+
+  "permissions": [
+    { "action": "external_directory", "resource": "*", "effect": "ask" },
+
+    { "action": "shell", "resource": "*", "effect": "ask" },
+
+    { "action": "shell", "resource": "git status*", "effect": "allow" },
+    { "action": "shell", "resource": "git diff*", "effect": "allow" },
+    { "action": "shell", "resource": "git log*", "effect": "allow" },
+    { "action": "shell", "resource": "git show*", "effect": "allow" },
+    { "action": "shell", "resource": "git rev-parse*", "effect": "allow" },
+    { "action": "shell", "resource": "git ls-files*", "effect": "allow" },
+    { "action": "shell", "resource": "git branch --show-current", "effect": "allow" },
+    { "action": "shell", "resource": "git -c safe.directory=* status*", "effect": "allow" },
+    { "action": "shell", "resource": "git -c safe.directory=* diff*", "effect": "allow" },
+    { "action": "shell", "resource": "git -c safe.directory=* log*", "effect": "allow" },
+    { "action": "shell", "resource": "git -c safe.directory=* rev-parse*", "effect": "allow" },
+
+    { "action": "shell", "resource": "cmake --version*", "effect": "allow" },
+    { "action": "shell", "resource": "ctest --version*", "effect": "allow" },
+    { "action": "shell", "resource": "cmake --preset windows-debug*", "effect": "allow" },
+    { "action": "shell", "resource": "cmake --build --preset windows-debug*", "effect": "allow" },
+    { "action": "shell", "resource": "ctest --test-dir build/windows-debug*", "effect": "allow" },
+    { "action": "shell", "resource": "cmake --preset ninja-debug*", "effect": "allow" },
+    { "action": "shell", "resource": "cmake --build --preset ninja-debug*", "effect": "allow" },
+    { "action": "shell", "resource": "ctest --preset ninja-debug*", "effect": "allow" },
+
+    { "action": "shell", "resource": "opencode --version*", "effect": "allow" },
+    { "action": "shell", "resource": "opencode -v*", "effect": "allow" },
+    { "action": "shell", "resource": "opencode models*", "effect": "allow" },
+    { "action": "shell", "resource": "opencode api get *", "effect": "allow" },
+    { "action": "shell", "resource": "opencode debug paths*", "effect": "allow" },
+    { "action": "shell", "resource": "opencode mcp list*", "effect": "allow" },
+    { "action": "shell", "resource": "opencode run *", "effect": "allow" },
+
+    { "action": "question", "resource": "*", "effect": "deny" },
+    { "action": "subagent", "resource": "*", "effect": "deny" },
+    { "action": "webfetch", "resource": "*", "effect": "deny" },
+    { "action": "websearch", "resource": "*", "effect": "deny" },
+
+    { "action": "edit", "resource": ".git/**", "effect": "deny" },
+    { "action": "edit", "resource": "**/.git/**", "effect": "deny" },
+    { "action": "edit", "resource": "AGENTS.md", "effect": "ask" },
+    { "action": "edit", "resource": "docs/DECISIONS.md", "effect": "ask" },
+    { "action": "edit", "resource": "docs/ARCHITECTURE.md", "effect": "ask" },
+    { "action": "edit", "resource": "opencode.jsonc", "effect": "ask" },
+    { "action": "edit", "resource": ".opencode/**", "effect": "ask" }
+  ],
+
+  "policies": [
+    { "action": "tool.use", "resource": "shell:git commit *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git merge *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git rebase *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git reset *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git clean *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git checkout *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git switch *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git restore *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git stash *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git revert *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git cherry-pick *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git pull *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git tag *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git worktree *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git config --global *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:gh *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:cmake --install *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:cmake --build * --target install*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:Remove-Item *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:rm *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:del *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:Move-Item *", "effect": "deny" },
+
+    { "action": "tool.use", "resource": "read:.git/**", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:**/.git/**", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:.git/**", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:**/.git/**", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:*.env", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:*.env.*", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:*.env", "effect": "deny" },
+    // Mirrors `read:*.env.*`. Whole-value `*` spans `/`; this also denies `.env.example` (side effect).
+    // Pattern semantics are owner-documented; no runtime behavior is claimed as tested here.
+    { "action": "tool.use", "resource": "edit:*.env.*", "effect": "deny" }
+  ]
+}
