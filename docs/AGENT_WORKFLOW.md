@@ -62,6 +62,17 @@ Subagents do not start further subagents. The coordinator is the only central ro
 
 Maximum two normal review correction rounds. After that the coordinator escalates with findings and a concrete decision request.
 
+### Review-fix workflow
+
+After EVERY reviewer result, classify each finding as `ACTIONABLE`, `OWNER_DECISION`, `NON_BLOCKING`, or `UNKNOWN`. Then apply exactly one of two cases:
+
+- Case A — no correction required: the reviewer reported no `ACTIONABLE` finding and no correction was made. Do not start another review. Keep the existing reviewer verdict and list open `OWNER_DECISION` and `UNKNOWN` items separately.
+- Case B — at least one correction required: group all `ACTIONABLE` findings by root cause and merge duplicates; create ONE bundled correction package per writer; have the responsible writer perform the correction; then an independent reviewer re-check is mandatory.
+
+Allow at most two bundled correction rounds. If any problem remains unresolved after the second re-check, mark the package `BLOCKED` and escalate with findings and all collected owner decisions. Do not split findings across rounds or silently downgrade severity.
+
+The reviewer stays read-only: it never edits files, never launches subagents, and never asks the owner directly. The coordinator routes changes only through permitted installed writers or a complete owner patch. Permissions are never expanded or bypassed; when effective rights cannot be determined, the task is not released, an owner patch is prepared, and the point is recorded as `OWNER_DECISION`. Never claim a fix is applied when only an owner patch was prepared.
+
 ## Product / development boundary
 
 The private development repository keeps all agent systems permanently, including:
