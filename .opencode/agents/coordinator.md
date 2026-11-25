@@ -140,27 +140,6 @@ permissions:
   - action: shell
     resource: "gh repo view *"
     effect: allow
-  - action: shell
-    resource: "git add *"
-    effect: allow
-  - action: shell
-    resource: "git commit *"
-    effect: allow
-  - action: shell
-    resource: "git push *"
-    effect: allow
-  - action: shell
-    resource: "git merge *"
-    effect: allow
-  - action: shell
-    resource: "gh auth status"
-    effect: allow
-  - action: shell
-    resource: "gh pr *"
-    effect: allow
-  - action: shell
-    resource: "gh repo view *"
-    effect: allow
   - action: webfetch
     resource: "*"
     effect: deny
