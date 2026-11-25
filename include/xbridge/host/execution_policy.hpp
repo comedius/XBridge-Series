@@ -30,4 +30,9 @@ struct ExecutionPlan {
 ExecutionPlan select_execution_plan(const HostCapabilities& host,
                                     const ExecutionSettings& settings);
 
+// Forwards to the HostCapabilities overload above, consuming host facts through
+// the read-only provider seam. Selection behavior and report text are unchanged.
+ExecutionPlan select_execution_plan(const ICapabilityProvider& provider,
+                                    const ExecutionSettings& settings);
+
 } // namespace xbridge::host

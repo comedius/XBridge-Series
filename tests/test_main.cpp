@@ -1213,6 +1213,485 @@ void test_x64_instruction_decoder() {
     }
 }
 
+void test_x64_decoder_rex_extended_registers() {
+    using namespace xbridge::cpu;
+
+    // REX.W=1 with REX.B=1 selects R8-R15 as the MOV immediate destination (ARCH 115-118).
+    bool imm64_all_registers = true;
+    for (std::uint8_t index = 0; index < 8; ++index) {
+        const std::uint64_t immediate =
+            0x1122334455667700ULL | static_cast<std::uint64_t>(index);
+        std::vector<std::uint8_t> bytes{0x49, static_cast<std::uint8_t>(0xB8 + index)};
+        for (std::size_t byte_index = 0; byte_index < 8; ++byte_index) {
+            bytes.push_back(
+                static_cast<std::uint8_t>((immediate >> (8 * byte_index)) & 0xFFULL));
+        }
+        const auto decoded = decode_x64_instruction(
+            std::span<const std::uint8_t>(bytes.data(), bytes.size()));
+        const auto expected = static_cast<X64GeneralRegister>(8U + index);
+        imm64_all_registers = imm64_all_registers &&
+            decoded.status == X64DecodeStatus::Ok &&
+            decoded.rex.w && decoded.rex.b &&
+            decoded.operand_size == X64OperandSize::Bits64 &&
+            decoded.dest_reg.base == expected && decoded.dest_reg.extended &&
+            decoded.immediate == immediate && decoded.immediate_size == 8;
+    }
+    check(imm64_all_registers,
+          "REX.W+B MOV imm64 decodes R8-R15 destinations with 64-bit immediates");
+
+    // REX.B without REX.W selects R8-R15 for 32-bit MOV immediate destinations.
+    bool imm32_all_registers = true;
+    for (std::uint8_t index = 0; index < 8; ++index) {
+        const std::uint32_t immediate =
+            0x12345670U | static_cast<std::uint32_t>(index);
+        std::vector<std::uint8_t> bytes{0x41, static_cast<std::uint8_t>(0xB8 + index)};
+        for (std::size_t byte_index = 0; byte_index < 4; ++byte_index) {
+            bytes.push_back(
+                static_cast<std::uint8_t>((immediate >> (8 * byte_index)) & 0xFFU));
+        }
+        const auto decoded = decode_x64_instruction(
+            std::span<const std::uint8_t>(bytes.data(), bytes.size()));
+        const auto expected = static_cast<X64GeneralRegister>(8U + index);
+        imm32_all_registers = imm32_all_registers &&
+            decoded.status == X64DecodeStatus::Ok &&
+            !decoded.rex.w && decoded.rex.b &&
+            decoded.operand_size == X64OperandSize::Bits32 &&
+            decoded.dest_reg.base == expected && decoded.dest_reg.extended &&
+            decoded.immediate == static_cast<std::uint64_t>(immediate) &&
+            decoded.immediate_size == 4;
+    }
+    check(imm32_all_registers,
+          "REX.B without REX.W decodes R8-R15 32-bit MOV immediate destinations");
+
+    // MOV r, r/m with REX.R+REX.B: reg is the destination, r/m is the source.
+    bool reg_reg_load = true;
+    for (std::uint8_t index = 0; index < 8; ++index) {
+        const std::uint8_t dest_low = index;
+        const std::uint8_t src_low = static_cast<std::uint8_t>(7U - index);
+        const std::uint8_t modrm = static_cast<std::uint8_t>(0xC0 | (dest_low << 3) | src_low);
+        const std::uint8_t bytes[] = {0x4D, 0x8B, modrm};
+        const auto decoded = decode_x64_instruction(bytes);
+        reg_reg_load = reg_reg_load &&
+            decoded.status == X64DecodeStatus::Ok &&
+            decoded.rex.r && decoded.rex.b &&
+            decoded.operand_size == X64OperandSize::Bits64 &&
+            !decoded.memory_operand &&
+            decoded.dest_reg.base == static_cast<X64GeneralRegister>(8U + dest_low) &&
+            decoded.dest_reg.extended &&
+            decoded.src_reg.base == static_cast<X64GeneralRegister>(8U + src_low) &&
+            decoded.src_reg.extended;
+    }
+    check(reg_reg_load,
+          "REX.W+R+B MOV r, r/m selects R8-R15 for both register operands");
+
+    // MOV r/m, r with REX.R+REX.B: r/m is the destination, reg is the source.
+    bool reg_reg_store = true;
+    for (std::uint8_t index = 0; index < 8; ++index) {
+        const std::uint8_t dest_low = index;
+        const std::uint8_t src_low = static_cast<std::uint8_t>(7U - index);
+        const std::uint8_t modrm = static_cast<std::uint8_t>(0xC0 | (src_low << 3) | dest_low);
+        const std::uint8_t bytes[] = {0x4D, 0x89, modrm};
+        const auto decoded = decode_x64_instruction(bytes);
+        reg_reg_store = reg_reg_store &&
+            decoded.status == X64DecodeStatus::Ok &&
+            decoded.rex.r && decoded.rex.b &&
+            decoded.operand_size == X64OperandSize::Bits64 &&
+            !decoded.memory_operand &&
+            decoded.dest_reg.base == static_cast<X64GeneralRegister>(8U + dest_low) &&
+            decoded.dest_reg.extended &&
+            decoded.src_reg.base == static_cast<X64GeneralRegister>(8U + src_low) &&
+            decoded.src_reg.extended;
+    }
+    check(reg_reg_store,
+          "REX.W+R+B MOV r/m, r reverses R8-R15 destination and source selection");
+}
+
+void test_x64_interpreter_rex_extended_registers() {
+    using namespace xbridge;
+    using namespace xbridge::cpu;
+
+    // MOV R15, imm64 with REX.W+B: 0x49 0xBF followed by the little-endian immediate.
+    {
+        memory::GuestMemory memory(64);
+        X64CpuState state;
+        state.rip = 0x3000;
+        state.gpr(X64GeneralRegister::R8) = 0xDEADBEEFULL;
+        const std::uint8_t bytes[] = {
+            0x49, 0xBF, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11};
+        const auto instr = decode_x64_instruction(bytes);
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(instr.status == X64DecodeStatus::Ok &&
+              instr.dest_reg.base == X64GeneralRegister::R15 &&
+              instr.dest_reg.extended &&
+              exec_status == X64ExecuteStatus::Ok &&
+              state.gpr(X64GeneralRegister::R15) == 0x1122334455667788ULL &&
+              state.gpr(X64GeneralRegister::R8) == 0xDEADBEEFULL &&
+              state.rip == 0x3000 + instr.length,
+              "interpreter REX.W+B MOV imm64 writes R15 without touching R8");
+    }
+
+    // MOV R9, R14 with REX.W+R+B: mod=11, reg=001 -> R9, rm=110 -> R14.
+    {
+        memory::GuestMemory memory(64);
+        X64CpuState state;
+        state.rip = 0x4000;
+        state.gpr(X64GeneralRegister::R14) = 0xA1B2C3D4E5F60718ULL;
+        const std::uint8_t bytes[] = {0x4D, 0x8B, 0xCE};
+        const auto instr = decode_x64_instruction(bytes);
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(instr.status == X64DecodeStatus::Ok &&
+              instr.dest_reg.base == X64GeneralRegister::R9 &&
+              instr.src_reg.base == X64GeneralRegister::R14 &&
+              exec_status == X64ExecuteStatus::Ok &&
+              state.gpr(X64GeneralRegister::R9) == 0xA1B2C3D4E5F60718ULL &&
+              state.gpr(X64GeneralRegister::R14) == 0xA1B2C3D4E5F60718ULL &&
+              state.rip == 0x4000 + instr.length,
+              "interpreter REX.W+R+B MOV r, r/m reads R14 into R9");
+    }
+
+    // MOV R14, R9 with REX.W+R+B: mod=11, rm=110 -> R14 destination, reg=001 -> R9 source.
+    {
+        memory::GuestMemory memory(64);
+        X64CpuState state;
+        state.rip = 0x5000;
+        state.gpr(X64GeneralRegister::R9) = 0x8877665544332211ULL;
+        const std::uint8_t bytes[] = {0x4D, 0x89, 0xCE};
+        const auto instr = decode_x64_instruction(bytes);
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(instr.status == X64DecodeStatus::Ok &&
+              instr.dest_reg.base == X64GeneralRegister::R14 &&
+              instr.src_reg.base == X64GeneralRegister::R9 &&
+              exec_status == X64ExecuteStatus::Ok &&
+              state.gpr(X64GeneralRegister::R14) == 0x8877665544332211ULL &&
+              state.gpr(X64GeneralRegister::R9) == 0x8877665544332211ULL &&
+              state.rip == 0x5000 + instr.length,
+              "interpreter REX.W+R+B MOV r/m, r writes R14 from R9");
+    }
+
+    // MOV R8, imm32 with REX.B only: a 32-bit write zero-extends into R8.
+    {
+        memory::GuestMemory memory(64);
+        X64CpuState state;
+        state.rip = 0x6000;
+        state.gpr(X64GeneralRegister::R8) = 0xFFFFFFFFFFFFFFFFULL;
+        const std::uint8_t bytes[] = {0x41, 0xB8, 0x78, 0x56, 0x34, 0x12};
+        const auto instr = decode_x64_instruction(bytes);
+        const auto exec_status = execute_instruction(instr, state, memory);
+        check(instr.status == X64DecodeStatus::Ok &&
+              instr.operand_size == X64OperandSize::Bits32 &&
+              instr.dest_reg.base == X64GeneralRegister::R8 &&
+              exec_status == X64ExecuteStatus::Ok &&
+              state.gpr(X64GeneralRegister::R8) == 0x0000000012345678ULL &&
+              state.rip == 0x6000 + instr.length,
+              "interpreter REX.B MOV imm32 zero-extends into R8");
+    }
+}
+
+void test_x64_decoder_rex_x_recognized_unused() {
+    using namespace xbridge::cpu;
+
+    // REX.X is recorded but must not change decoding of a supported form.
+    {
+        const std::uint8_t without_x[] = {
+            0x48, 0xB8, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11};
+        const std::uint8_t with_x[] = {
+            0x4A, 0xB8, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11};
+        const auto plain = decode_x64_instruction(without_x);
+        const auto rex_x = decode_x64_instruction(with_x);
+        check(plain.status == X64DecodeStatus::Ok &&
+              rex_x.status == X64DecodeStatus::Ok &&
+              !plain.rex.x && rex_x.rex.x,
+              "REX.X bit is recognized in the decoded prefix");
+        check(plain.opcode == rex_x.opcode &&
+              plain.length == rex_x.length &&
+              plain.operand_size == rex_x.operand_size &&
+              plain.dest_reg.base == rex_x.dest_reg.base &&
+              plain.dest_reg.extended == rex_x.dest_reg.extended &&
+              plain.src_reg.base == rex_x.src_reg.base &&
+              plain.src_reg.extended == rex_x.src_reg.extended &&
+              plain.memory_operand == rex_x.memory_operand &&
+              plain.displacement == rex_x.displacement &&
+              plain.immediate == rex_x.immediate &&
+              plain.immediate_size == rex_x.immediate_size,
+              "REX.X does not change MOV imm64 decoding");
+    }
+
+    // The same applies to a register-to-register form with REX.R.
+    {
+        const std::uint8_t without_x[] = {0x4C, 0x8B, 0xC0};
+        const std::uint8_t with_x[] = {0x4E, 0x8B, 0xC0};
+        const auto plain = decode_x64_instruction(without_x);
+        const auto rex_x = decode_x64_instruction(with_x);
+        check(plain.status == X64DecodeStatus::Ok &&
+              rex_x.status == X64DecodeStatus::Ok &&
+              rex_x.rex.x && !plain.rex.x,
+              "REX.X bit is recognized on MOV reg/reg");
+        check(plain.dest_reg.base == rex_x.dest_reg.base &&
+              plain.dest_reg.extended == rex_x.dest_reg.extended &&
+              plain.src_reg.base == rex_x.src_reg.base &&
+              plain.src_reg.extended == rex_x.src_reg.extended &&
+              !plain.memory_operand && !rex_x.memory_operand &&
+              plain.length == rex_x.length,
+              "REX.X does not change MOV reg/reg decoding");
+    }
+}
+
+void test_x64_decoder_truncated_rex_modrm() {
+    using namespace xbridge::cpu;
+
+    // A REX prefix followed only by a ModR/M opcode is an incomplete instruction.
+    const std::uint8_t rex_w_opcode_only[] = {0x48, 0x8B};
+    check(decode_x64_instruction(rex_w_opcode_only).status == X64DecodeStatus::TruncatedInput,
+          "REX.W + MOV r/m opcode without ModR/M: TruncatedInput");
+
+    const std::uint8_t rex_b_opcode_only[] = {0x41, 0x89};
+    check(decode_x64_instruction(rex_b_opcode_only).status == X64DecodeStatus::TruncatedInput,
+          "REX.B + MOV r/m opcode without ModR/M: TruncatedInput");
+
+    // imm32 truncation boundary: four of five bytes present.
+    const std::uint8_t truncated_imm32[] = {0xB8, 0x78, 0x56, 0x34};
+    check(decode_x64_instruction(truncated_imm32).status == X64DecodeStatus::TruncatedInput,
+          "MOV imm32 missing the final byte: TruncatedInput");
+}
+
+void test_x64_interpreter_non_ok_decode_noop() {
+    using namespace xbridge;
+    using namespace xbridge::cpu;
+
+    const auto check_noop = [](const std::vector<std::uint8_t>& bytes,
+                               X64DecodeStatus expected_status,
+                               const char* label) {
+        const auto instr = decode_x64_instruction(
+            std::span<const std::uint8_t>(bytes.data(), bytes.size()));
+        check(instr.status == expected_status, label);
+
+        memory::GuestMemory memory(64);
+        std::vector<std::uint8_t> memory_before(memory.size());
+        for (std::size_t address = 0; address < memory.size(); ++address) {
+            const auto value = static_cast<std::uint8_t>(0xA5U + address);
+            memory.write8(static_cast<std::uint32_t>(address), value);
+            memory_before[address] = value;
+        }
+
+        X64CpuState state;
+        state.rip = 0x2000;
+        for (std::size_t index = 0; index < state.general_purpose_registers.size(); ++index) {
+            state.general_purpose_registers[index] =
+                0x1122334455667700ULL + static_cast<std::uint64_t>(index);
+        }
+        const auto registers_before = state.general_purpose_registers;
+        const auto rip_before = state.rip;
+
+        auto execution_status = X64ExecuteStatus::MemoryAccessError;
+        check_does_not_throw(
+            [&] { execution_status = execute_instruction(instr, state, memory); },
+            "non-Ok decode executes without an exception");
+        check(execution_status == X64ExecuteStatus::Ok,
+              "non-Ok decode returns Ok from execute_instruction");
+        check(state.rip == rip_before,
+              "non-Ok decode leaves RIP unchanged");
+        check(state.general_purpose_registers == registers_before,
+              "non-Ok decode leaves every GPR unchanged");
+
+        bool memory_unchanged = true;
+        for (std::size_t address = 0; address < memory.size(); ++address) {
+            memory_unchanged = memory_unchanged &&
+                memory.read8(static_cast<std::uint32_t>(address)) == memory_before[address];
+        }
+        check(memory_unchanged,
+              "non-Ok decode leaves GuestMemory unchanged");
+    };
+
+    check_noop(std::vector<std::uint8_t>{}, X64DecodeStatus::EmptyInput,
+               "EmptyInput: decode is an execution no-op");
+    check_noop({0x0F}, X64DecodeStatus::UnknownOpcode,
+               "UnknownOpcode: decode is an execution no-op");
+    check_noop({0x89, 0x04}, X64DecodeStatus::InvalidEncoding,
+               "InvalidEncoding: decode is an execution no-op");
+    check_noop({0x48, 0x8B}, X64DecodeStatus::TruncatedInput,
+               "TruncatedInput: decode is an execution no-op");
+}
+
+void test_x64_step_instruction_facade() {
+    using namespace xbridge;
+    using namespace xbridge::cpu;
+
+    // NOP {0x90}: Ok, RIP += 1
+    {
+        memory::GuestMemory memory(64);
+        X64CpuState state;
+        state.rip = 0x1000;
+        const std::uint8_t bytes[] = {0x90};
+        check(step_x64_instruction(bytes, state, memory) == X64ExecuteStatus::Ok,
+              "step NOP: status Ok");
+        check(state.rip == 0x1001, "step NOP: RIP advanced by 1");
+    }
+
+    // MOV EAX, imm32: Ok, RIP += 5, RAX = 0x12345678
+    {
+        memory::GuestMemory memory(64);
+        X64CpuState state;
+        state.rip = 0x1000;
+        const std::uint8_t bytes[] = {0xB8, 0x78, 0x56, 0x34, 0x12};
+        check(step_x64_instruction(bytes, state, memory) == X64ExecuteStatus::Ok,
+              "step MOV EAX, imm32: status Ok");
+        check(state.gpr(X64GeneralRegister::Rax) == 0x12345678ULL,
+              "step MOV EAX, imm32: RAX = 0x12345678");
+        check(state.rip == 0x1005, "step MOV EAX, imm32: RIP advanced by 5");
+    }
+
+    // MOV RAX, imm64 mit REX.W: Ok, RIP += 10, vollständiger 64-Bit-Wert
+    {
+        memory::GuestMemory memory(64);
+        X64CpuState state;
+        state.rip = 0x1000;
+        const std::uint8_t bytes[] = {0x48, 0xB8, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11};
+        check(step_x64_instruction(bytes, state, memory) == X64ExecuteStatus::Ok,
+              "step MOV RAX, imm64: status Ok");
+        check(state.gpr(X64GeneralRegister::Rax) == 0x1122334455667788ULL,
+              "step MOV RAX, imm64: full 64-bit RAX value");
+        check(state.rip == 0x100A, "step MOV RAX, imm64: RIP advanced by 10");
+    }
+
+    // MOV RAX, RCX (Register-zu-Register): 0x48 0x8B 0xC1
+    {
+        memory::GuestMemory memory(64);
+        X64CpuState state;
+        state.rip = 0x1000;
+        state.gpr(X64GeneralRegister::Rcx) = 0xAABBCCDD11223344ULL;
+        const std::uint8_t bytes[] = {0x48, 0x8B, 0xC1};
+        check(step_x64_instruction(bytes, state, memory) == X64ExecuteStatus::Ok,
+              "step MOV RAX, RCX: status Ok");
+        check(state.gpr(X64GeneralRegister::Rax) == 0xAABBCCDD11223344ULL,
+              "step MOV RAX, RCX: RAX copied from RCX");
+        check(state.gpr(X64GeneralRegister::Rcx) == 0xAABBCCDD11223344ULL,
+              "step MOV RAX, RCX: RCX unchanged");
+        check(state.rip == 0x1003, "step MOV RAX, RCX: RIP advanced by 3");
+    }
+
+    // MOV [RAX], ECX / MOV ECX, [RAX] Round Trip
+    {
+        memory::GuestMemory memory(64);
+        X64CpuState state;
+        state.rip = 0x1000;
+        state.gpr(X64GeneralRegister::Rax) = 0x10;
+        state.gpr(X64GeneralRegister::Rcx) = 0xDEADBEEF;
+
+        const std::uint8_t write_bytes[] = {0x89, 0x08};
+        check(step_x64_instruction(write_bytes, state, memory) == X64ExecuteStatus::Ok,
+              "step MOV [RAX], ECX: status Ok");
+        check(memory.read32(16) == 0xDEADBEEF,
+              "step MOV [RAX], ECX: memory at address 16 = 0xDEADBEEF");
+        check(state.rip == 0x1002, "step MOV [RAX], ECX: RIP advanced by 2");
+
+        state.gpr(X64GeneralRegister::Rcx) = 0;
+        state.rip = 0x1000;
+        const std::uint8_t read_bytes[] = {0x8B, 0x08};
+        check(step_x64_instruction(read_bytes, state, memory) == X64ExecuteStatus::Ok,
+              "step MOV ECX, [RAX]: status Ok");
+        check(state.gpr(X64GeneralRegister::Rcx) == 0xDEADBEEF,
+              "step MOV ECX, [RAX]: RCX = 0xDEADBEEF");
+        check(state.rip == 0x1002, "step MOV ECX, [RAX]: RIP advanced by 2");
+    }
+
+    // Speicherfehler (4 Byte, 8 Byte, Adresse über UINT32_MAX):
+    // MemoryAccessError ohne Änderung an CPU-Zustand oder GuestMemory.
+    const auto check_memory_error = [](const std::vector<std::uint8_t>& bytes,
+                                       std::size_t memory_size,
+                                       std::uint64_t address,
+                                       const char* label) {
+        memory::GuestMemory memory(memory_size);
+        std::vector<std::uint8_t> memory_before(memory.size());
+        for (std::size_t addr = 0; addr < memory.size(); ++addr) {
+            const auto value = static_cast<std::uint8_t>(0xA5U + addr);
+            memory.write8(static_cast<std::uint32_t>(addr), value);
+            memory_before[addr] = value;
+        }
+
+        X64CpuState state;
+        state.rip = 0x1000;
+        state.gpr(X64GeneralRegister::Rax) = address;
+        state.gpr(X64GeneralRegister::Rcx) = 0x1122334455667788ULL;
+        const auto registers_before = state.general_purpose_registers;
+        const auto rip_before = state.rip;
+
+        check(step_x64_instruction(
+                  std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+                  state, memory) == X64ExecuteStatus::MemoryAccessError,
+              (std::string(label) + ": status MemoryAccessError").c_str());
+        check(state.general_purpose_registers == registers_before,
+              (std::string(label) + ": GPRs unchanged").c_str());
+        check(state.rip == rip_before,
+              (std::string(label) + ": RIP unchanged").c_str());
+
+        bool memory_unchanged = true;
+        for (std::size_t addr = 0; addr < memory.size(); ++addr) {
+            memory_unchanged = memory_unchanged &&
+                memory.read8(static_cast<std::uint32_t>(addr)) == memory_before[addr];
+        }
+        check(memory_unchanged,
+              (std::string(label) + ": GuestMemory unchanged").c_str());
+    };
+
+    // 4 Bytes ab Adresse 13 in 16 Bytes Speicher überschreitet das Ende.
+    check_memory_error({0x89, 0x08}, 16, 0x0000000DULL,
+                       "step MOV [RAX], ECX at 4-byte edge");
+    // 8 Bytes ab Adresse 9 in 16 Bytes Speicher überschreitet das Ende.
+    check_memory_error({0x48, 0x89, 0x08}, 16, 0x00000009ULL,
+                       "step MOV [RAX], RCX at 8-byte edge");
+    // Adresse über UINT32_MAX darf nicht stillschweigend gekürzt werden.
+    check_memory_error({0x89, 0x08}, 64, 0x100000000ULL,
+                       "step MOV [RAX], ECX above 32-bit");
+
+    // Nicht-Ok-Dekodierungen sind Ok-No-Ops ohne Zustandsänderung.
+    const auto check_noop = [](const std::vector<std::uint8_t>& bytes,
+                               const char* label) {
+        check(decode_x64_instruction(
+                  std::span<const std::uint8_t>(bytes.data(), bytes.size())).status !=
+                  X64DecodeStatus::Ok,
+              (std::string(label) + ": decode is non-Ok").c_str());
+
+        memory::GuestMemory memory(64);
+        std::vector<std::uint8_t> memory_before(memory.size());
+        for (std::size_t addr = 0; addr < memory.size(); ++addr) {
+            const auto value = static_cast<std::uint8_t>(0xA5U + addr);
+            memory.write8(static_cast<std::uint32_t>(addr), value);
+            memory_before[addr] = value;
+        }
+
+        X64CpuState state;
+        state.rip = 0x2000;
+        for (std::size_t index = 0; index < state.general_purpose_registers.size(); ++index) {
+            state.general_purpose_registers[index] =
+                0x1122334455667700ULL + static_cast<std::uint64_t>(index);
+        }
+        const auto registers_before = state.general_purpose_registers;
+        const auto rip_before = state.rip;
+
+        check(step_x64_instruction(
+                  std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+                  state, memory) == X64ExecuteStatus::Ok,
+              (std::string(label) + ": status Ok (no-op)").c_str());
+        check(state.rip == rip_before,
+              (std::string(label) + ": RIP unchanged").c_str());
+        check(state.general_purpose_registers == registers_before,
+              (std::string(label) + ": GPRs unchanged").c_str());
+
+        bool memory_unchanged = true;
+        for (std::size_t addr = 0; addr < memory.size(); ++addr) {
+            memory_unchanged = memory_unchanged &&
+                memory.read8(static_cast<std::uint32_t>(addr)) == memory_before[addr];
+        }
+        check(memory_unchanged,
+              (std::string(label) + ": GuestMemory unchanged").c_str());
+    };
+
+    check_noop({}, "step EmptyInput");
+    check_noop({0x0F}, "step UnknownOpcode");
+    check_noop({0x89, 0x04}, "step InvalidEncoding");
+    check_noop({0x48, 0x8B}, "step TruncatedInput");
+}
+
 void test_cpu_program_lifecycle() {
     using namespace xbridge;
 
@@ -1276,6 +1755,272 @@ void test_cpu_program_lifecycle() {
     check(small_cpu.state().instruction_pointer == 1 && small_cpu.state().halted,
           "TestCpu loads and halts a valid program after a failed load");
 }
+
+void test_host_capability_provider() {
+    using namespace xbridge;
+    using namespace xbridge::host;
+
+    // Synthetische Host-Fakten: kein Windows-, Vulkan- oder D3D12-Probing.
+    HostCapabilities capable_host{};
+    capable_host.logical_threads = 16;
+    capable_host.available_ram_mb = 8192;
+    capable_host.dedicated_vram_mb = 8192;
+    capable_host.cpu_jit_available = true;
+    capable_host.vulkan_available = true;
+    capable_host.direct3d12_available = true;
+
+    HostCapabilities limited_host{};
+    limited_host.software_renderer_available = true;
+
+    const FixedCapabilityProvider capable_provider(capable_host);
+    const FixedCapabilityProvider limited_provider(limited_host);
+
+    // Der Provider hält eine eigene, unveränderliche Kopie der Fakten.
+    const auto& first = capable_provider.capabilities();
+    const auto& second = capable_provider.capabilities();
+    check(&first == &second,
+          "provider returns the same stored HostCapabilities object");
+    check(first.logical_threads == capable_host.logical_threads &&
+          first.available_ram_mb == capable_host.available_ram_mb &&
+          first.dedicated_vram_mb == capable_host.dedicated_vram_mb &&
+          first.cpu_jit_available == capable_host.cpu_jit_available &&
+          first.vulkan_available == capable_host.vulkan_available &&
+          first.direct3d12_available == capable_host.direct3d12_available &&
+          first.software_renderer_available == capable_host.software_renderer_available &&
+          first.gpu_name == capable_host.gpu_name &&
+          first.driver_version == capable_host.driver_version,
+          "provider exposes exactly the supplied synthetic facts");
+
+    auto mutable_facts = capable_host;
+    const FixedCapabilityProvider copied_provider(mutable_facts);
+    mutable_facts.vulkan_available = false;
+    mutable_facts.gpu_name = "changed after construction";
+    check(copied_provider.capabilities().vulkan_available == capable_host.vulkan_available &&
+          copied_provider.capabilities().gpu_name == capable_host.gpu_name,
+          "provider reads its stored copy, not external mutable state");
+
+    const ICapabilityProvider& seam = capable_provider;
+    check(&seam.capabilities() == &first,
+          "ICapabilityProvider seam exposes the same stored facts");
+
+    const auto plans_match = [](const ExecutionPlan& direct, const ExecutionPlan& provided) {
+        return direct.graphics == provided.graphics &&
+               direct.cpu == provided.cpu &&
+               direct.profile == provided.profile &&
+               direct.graphics_accelerated == provided.graphics_accelerated &&
+               direct.fallback_used == provided.fallback_used &&
+               direct.report == provided.report;
+    };
+
+    const auto check_provider = [&](const ICapabilityProvider& provider,
+                                    const ExecutionSettings& settings,
+                                    GraphicsBackend expected_graphics,
+                                    CpuBackend expected_cpu,
+                                    const char* label) {
+        const auto settings_before = settings;
+        const auto direct = select_execution_plan(provider.capabilities(), settings);
+        const auto provided = select_execution_plan(provider, settings);
+        const auto repeated = select_execution_plan(provider, settings);
+
+        check(direct.graphics == expected_graphics && provided.graphics == expected_graphics,
+              (std::string(label) + ": expected graphics backend").c_str());
+        check(direct.cpu == expected_cpu && provided.cpu == expected_cpu,
+              (std::string(label) + ": expected CPU backend").c_str());
+        check(plans_match(direct, provided),
+              (std::string(label) + ": plan and report match direct overload").c_str());
+        check(plans_match(provided, repeated),
+              (std::string(label) + ": repeated provider call is identical").c_str());
+        check(settings.graphics == settings_before.graphics &&
+              settings.cpu == settings_before.cpu &&
+              settings.profile == settings_before.profile &&
+              settings.allow_software_fallback == settings_before.allow_software_fallback,
+              (std::string(label) + ": ExecutionSettings unchanged").c_str());
+    };
+
+    check_provider(capable_provider, {}, GraphicsBackend::Vulkan, CpuBackend::Interpreter,
+                   "provider automatic Vulkan");
+    check_provider(limited_provider, {}, GraphicsBackend::Software, CpuBackend::Interpreter,
+                   "provider software fallback");
+
+    ExecutionSettings no_fallback{};
+    no_fallback.allow_software_fallback = false;
+    check_provider(limited_provider, no_fallback, GraphicsBackend::Unavailable,
+                   CpuBackend::Interpreter, "provider fallback disabled");
+
+    ExecutionSettings manual{};
+    manual.graphics = GraphicsPreference::Direct3D12;
+    manual.cpu = CpuPreference::Interpreter;
+    check_provider(capable_provider, manual, GraphicsBackend::Direct3D12,
+                   CpuBackend::Interpreter, "provider manual Direct3D12");
+
+    ExecutionSettings jit_requested{};
+    jit_requested.cpu = CpuPreference::Jit;
+    check_provider(capable_provider, jit_requested, GraphicsBackend::Vulkan,
+                   CpuBackend::Jit, "provider JIT available");
+    check_provider(limited_provider, jit_requested, GraphicsBackend::Software,
+                   CpuBackend::Interpreter, "provider JIT unavailable");
+
+    const auto jit_unavailable_plan = select_execution_plan(limited_provider, jit_requested);
+    check(jit_unavailable_plan.report.find("JIT requested but unavailable") != std::string::npos,
+          "provider report explains unavailable requested JIT");
+}
+
+void test_x64_step_at_rip_bridge() {
+    using namespace xbridge;
+    using namespace xbridge::cpu;
+
+    const auto fill_memory = [](memory::GuestMemory& memory) {
+        std::vector<std::uint8_t> before(memory.size());
+        for (std::size_t addr = 0; addr < memory.size(); ++addr) {
+            const auto value = static_cast<std::uint8_t>(0xA5U + addr);
+            memory.write8(static_cast<std::uint32_t>(addr), value);
+            before[addr] = value;
+        }
+        return before;
+    };
+
+    const auto make_state = []() {
+        X64CpuState state;
+        state.rip = 0x1000;
+        state.rflags = 0x0000000000000A95ULL;
+        for (std::size_t index = 0; index < state.general_purpose_registers.size(); ++index) {
+            state.general_purpose_registers[index] =
+                0x1122334455667700ULL + static_cast<std::uint64_t>(index);
+        }
+        return state;
+    };
+
+    const auto verify_unchanged = [](const X64CpuState& before, const X64CpuState& after,
+                                     const std::vector<std::uint8_t>& memory_before,
+                                     const memory::GuestMemory& memory,
+                                     const char* label) {
+        check(after.rip == before.rip,
+              (std::string(label) + ": RIP unchanged").c_str());
+        check(after.rflags == before.rflags,
+              (std::string(label) + ": RFLAGS unchanged").c_str());
+        check(after.general_purpose_registers == before.general_purpose_registers,
+              (std::string(label) + ": GPRs unchanged").c_str());
+        bool memory_unchanged = true;
+        for (std::size_t addr = 0; addr < memory.size(); ++addr) {
+            memory_unchanged = memory_unchanged &&
+                memory.read8(static_cast<std::uint32_t>(addr)) == memory_before[addr];
+        }
+        check(memory_unchanged,
+              (std::string(label) + ": GuestMemory unchanged").c_str());
+    };
+
+    // {NOP, MOV imm32, NOP} ab 0x100: drei aufeinanderfolgende Schritte.
+    {
+        memory::GuestMemory memory(512);
+        memory.load(0x100, {0x90, 0xB8, 0x78, 0x56, 0x34, 0x12, 0x90});
+        X64CpuState state;
+        state.rip = 0x100;
+
+        check(step_x64_at_rip(state, memory) == X64ExecuteStatus::Ok,
+              "step_x64_at_rip NOP: status Ok");
+        check(state.rip == 0x101 && state.gpr(X64GeneralRegister::Rax) == 0,
+              "step_x64_at_rip first step: RIP 0x101, RAX unchanged");
+
+        check(step_x64_at_rip(state, memory) == X64ExecuteStatus::Ok,
+              "step_x64_at_rip MOV imm32: status Ok");
+        check(state.rip == 0x106 && state.gpr(X64GeneralRegister::Rax) == 0x12345678ULL,
+              "step_x64_at_rip second step: RIP 0x106, RAX = 0x12345678");
+
+        check(step_x64_at_rip(state, memory) == X64ExecuteStatus::Ok,
+              "step_x64_at_rip final NOP: status Ok");
+        check(state.rip == 0x107 && state.gpr(X64GeneralRegister::Rax) == 0x12345678ULL,
+              "step_x64_at_rip third step: RIP 0x107, RAX preserved");
+    }
+
+    // MOV RAX, imm64 mit REX.W über den Fetch (10 Bytes).
+    {
+        memory::GuestMemory memory(256);
+        memory.load(0x80, {0x48, 0xB8, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11});
+        X64CpuState state;
+        state.rip = 0x80;
+
+        check(step_x64_at_rip(state, memory) == X64ExecuteStatus::Ok,
+              "step_x64_at_rip MOV imm64: status Ok");
+        check(state.gpr(X64GeneralRegister::Rax) == 0x1122334455667788ULL,
+              "step_x64_at_rip MOV imm64: full 64-bit RAX");
+        check(state.rip == 0x8A, "step_x64_at_rip MOV imm64: RIP advanced by 10");
+    }
+
+    // MOV [RAX], ECX / MOV ECX, [RAX] über den Fetch (Adresse 0x30).
+    {
+        memory::GuestMemory memory(512);
+        memory.load(0x100, {0x89, 0x08, 0x8B, 0x08});
+        X64CpuState state;
+        state.rip = 0x100;
+        state.gpr(X64GeneralRegister::Rax) = 0x30;
+        state.gpr(X64GeneralRegister::Rcx) = 0xDEADBEEF;
+
+        check(step_x64_at_rip(state, memory) == X64ExecuteStatus::Ok,
+              "step_x64_at_rip MOV [RAX], ECX: status Ok");
+        check(memory.read32(0x30) == 0xDEADBEEF && state.rip == 0x102,
+              "step_x64_at_rip MOV [RAX], ECX: memory written, RIP advanced by 2");
+
+        check(step_x64_at_rip(state, memory) == X64ExecuteStatus::Ok,
+              "step_x64_at_rip MOV ECX, [RAX]: status Ok");
+        check(state.gpr(X64GeneralRegister::Rcx) == 0xDEADBEEF && state.rip == 0x104,
+              "step_x64_at_rip MOV ECX, [RAX]: RCX loaded, RIP advanced by 2");
+    }
+
+    // NOP am letzten Byte: Ok, RIP = memory.size(); nächster Schritt ohne Mutation.
+    {
+        memory::GuestMemory memory(16);
+        auto memory_before = fill_memory(memory);
+        memory.write8(15, 0x90);
+        memory_before[15] = 0x90;
+        auto state = make_state();
+        state.rip = 15;
+
+        check(step_x64_at_rip(state, memory) == X64ExecuteStatus::Ok,
+              "step_x64_at_rip NOP at last byte: status Ok");
+        check(state.rip == memory.size(),
+              "step_x64_at_rip NOP at last byte: RIP advanced to memory.size()");
+
+        const auto state_before = state;
+        check(step_x64_at_rip(state, memory) == X64ExecuteStatus::MemoryAccessError,
+              "step_x64_at_rip after last byte: status MemoryAccessError");
+        verify_unchanged(state_before, state, memory_before, memory,
+                         "step_x64_at_rip after last byte");
+    }
+
+    // Ungültige RIP-Werte: MemoryAccessError ohne jede Zustands-/Speicheränderung.
+    const auto check_error_no_mutation = [&](std::uint64_t rip, std::size_t memory_size,
+                                            const char* label) {
+        memory::GuestMemory memory(memory_size);
+        const auto memory_before = fill_memory(memory);
+        auto state = make_state();
+        state.rip = rip;
+        const auto state_before = state;
+
+        check(step_x64_at_rip(state, memory) == X64ExecuteStatus::MemoryAccessError,
+              (std::string(label) + ": status MemoryAccessError").c_str());
+        verify_unchanged(state_before, state, memory_before, memory, label);
+    };
+
+    check_error_no_mutation(0x100000000ULL, 64, "step_x64_at_rip above UINT32_MAX");
+    check_error_no_mutation(64, 64, "step_x64_at_rip at memory.size()");
+
+    // Non-Ok-Decode (0x0F): Ok-No-op mit unverändertem RIP und Zustand.
+    {
+        memory::GuestMemory memory(64);
+        auto memory_before = fill_memory(memory);
+        memory.write8(8, 0x0F);
+        memory_before[8] = 0x0F;
+        auto state = make_state();
+        state.rip = 8;
+        const auto state_before = state;
+
+        check(step_x64_at_rip(state, memory) == X64ExecuteStatus::Ok,
+              "step_x64_at_rip non-Ok decode: status Ok");
+        verify_unchanged(state_before, state, memory_before, memory,
+                         "step_x64_at_rip non-Ok decode");
+    }
+}
+
 }
 
 int main() {
@@ -1320,8 +2065,16 @@ int main() {
     test_x64_interpreter_memory_error_no_state_mutation();
     test_x64_interpreter_error_no_state_mutation();
     test_x64_instruction_decoder();
+    test_x64_decoder_rex_extended_registers();
+    test_x64_interpreter_rex_extended_registers();
+    test_x64_decoder_rex_x_recognized_unused();
+    test_x64_decoder_truncated_rex_modrm();
+    test_x64_interpreter_non_ok_decode_noop();
+    test_x64_step_instruction_facade();
     test_cpu_execution_hardening();
     test_cpu_program_lifecycle();
+    test_host_capability_provider();
+    test_x64_step_at_rip_bridge();
 
     host::HostCapabilities capable_host{};
     capable_host.logical_threads = 16;
