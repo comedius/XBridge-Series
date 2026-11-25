@@ -3667,7 +3667,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: conformant
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3695,7 +3695,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: conformant
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3723,7 +3723,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_applicable
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3751,7 +3751,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_applicable
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3779,7 +3779,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3807,7 +3807,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3835,7 +3835,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3863,7 +3863,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3891,7 +3891,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3919,7 +3919,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3947,7 +3947,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3975,7 +3975,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -4003,7 +4003,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -4027,11 +4027,11 @@ OWNER_APPROVALS: publication authorized by XB-NEXT-DEVELOPMENT-03; the hybrid di
 PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-PUB
 PARENT_ID: XB-NEXT-DEVELOPMENT-03
 DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-R0, XB-NEXT-DEVELOPMENT-03-R0-C1, XB-NEXT-DEVELOPMENT-03-A0, XB-NEXT-DEVELOPMENT-03-A0-C1, XB-NEXT-DEVELOPMENT-03-N1, XB-NEXT-DEVELOPMENT-03-B1, XB-NEXT-DEVELOPMENT-03-C1, XB-NEXT-DEVELOPMENT-03-F1, XB-NEXT-DEVELOPMENT-03-T1, XB-NEXT-DEVELOPMENT-03-B1-C1, XB-NEXT-DEVELOPMENT-03-T1-C1, XB-NEXT-DEVELOPMENT-03-P1, XB-NEXT-DEVELOPMENT-03-T1-C2
-STATUS: in_progress
-IMPLEMENTATION_STATE: in_progress
+STATUS: pass
+IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: owner_pending
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -4083,3 +4083,5 @@ PROGRESS_UNITS: N/A
 `observed` — Reviewer re-check session `ses_deb08e865ffe6oRHSYKb32YnHK` returned `PASS` for `XB-NEXT-DEVELOPMENT-03-P1` and `XB-NEXT-DEVELOPMENT-03-T1-C2` with `ACTIONABLE` 0, `OWNER_DECISION` 0, `NON_BLOCKING` 0 and `UNKNOWN` 0; all three prior findings were closed with file:line evidence and no collateral change was found. Reviewer had no shell tool and did not independently run build/CTest/diff. Per review-fix Case A, no further product/test review was started. N1, B1, C1, F1, T1, B1-C1, T1-C1, P1 and T1-C2 are recorded `pass`/`done`/`PASS`; all remain `PUBLICATION_STATUS: local_only` until the separate PUB package completes. `unknown` items remain open for ADR acceptance, future isolation of arbitrary native guest code, user-facing backend policy, physical-region removal/permission mutation and adoption of external GPL material."
 
 `observed` — Publication began under `XB-NEXT-DEVELOPMENT-03-PUB`. One combined shell command using semicolon suffixes was rejected by tool permissions, so no state changed from that attempt; exact allowed commands were then used. `git status --short --branch` returned `## main...origin/main [ahead 1]`; `git branch --show-current` returned `main`; `git rev-parse HEAD` returned `ac65037d07d7a09877da10ddd036a730538e09e3`; `git rev-parse origin/main` returned `4ee82d99e79a37498b5359dd6b31a43af3c357fb`; `git diff --check` produced no output; `git log -5 --oneline` showed the XB-03 commit above the XB-02 baseline; GitHub CLI `auth status` showed account `comedius`; `gh pr list --repo comedius/XBridge-Series --head feature/xb-next-development-03 --state all` produced no output. `git push origin HEAD:refs/heads/feature/xb-next-development-03` created the remote feature branch without a forbidden branch switch. `gh pr create --repo comedius/XBridge-Series --base main --head feature/xb-next-development-03 ...` created PR #22 at `https://github.com/comedius/XBridge-Series/pull/22`. `gh pr view 22 ...` returned `OPEN`, `MERGEABLE`, `reviewDecision` empty and two `Windows Build` `build` checks `IN_PROGRESS`. `gh pr checks 22 --repo comedius/XBridge-Series` returned two `build	pending` lines and exit code 1; therefore no merge was attempted. PUB is `in_progress`/`owner_pending`; merge, final sync and `published` remain `unknown` until CI succeeds.
+
+`observed` — CI completed before any merge: `gh pr checks 22 --repo comedius/XBridge-Series --watch` showed both `Windows Build` checks passing (`43s` and `58s`), and a non-watch `gh pr checks 22 --repo comedius/XBridge-Series` returned `build	pass	43s` plus `build	pass	58s`. `gh pr view 22 --repo comedius/XBridge-Series --json number,state,mergeable,reviewDecision,statusCheckRollup` returned `OPEN`/`MERGEABLE` with both check conclusions `SUCCESS`. Because the required independent reviewer verdict is already recorded as `PASS`, `gh pr merge 22 --merge --repo comedius/XBridge-Series` was executed and produced no output. Follow-up `gh pr view 22 --repo comedius/XBridge-Series --json number,state,mergedAt,mergeCommit,statusCheckRollup` returned `state: MERGED`, `mergedAt: 2026-11-25T23:24:54Z`, merge commit `cc9f641b899c76cfe87e185c7e68d9daf1fd8da9`, and both checks `SUCCESS`. `git fetch origin` updated `origin/main` to `cc9f641` and also listed two pre-existing remote documentation branches not used by this package. `git merge --ff-only origin/main` returned `Updating 7f6c226..cc9f641` and `Fast-forward`; no history rewrite, reset, stash or destructive cleanup was used. The thirteen XB-03 package metadata blocks and the PUB block are now recorded `PUBLICATION_STATUS: published`; PUB is `pass`/`done`/`PASS`. Open owner decisions remain unchanged.
