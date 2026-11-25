@@ -110,3 +110,7 @@ Kennzeichnungen: `observed` = direkt geprüftes Ergebnis; `documented` = bisheri
 - **Shell-Pattern sind keine Sandbox:** `documented`: Die Regeln in `opencode.jsonc` schützen das Agentenverhalten, nicht den Host-Account.
 
 Siehe auch `docs/RELEASE_CHECKLIST.md`, `docs/AGENT_WORKFLOW.md` und `docs/AGENT_TASKS.md`.
+
+## Repository publication policy
+
+This project repository is public. Project-related AI/agent configuration, prompts, workflow documentation, research and automation may be stored and published here. Their exclusion from a future end-user product package is a packaging rule only. Only private personal data and actual secrets/credentials are excluded from publication. Any older wording that labels the repository private or forbids publishing AI/development files is superseded by this owner policy.
