@@ -2742,7 +2742,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -2782,7 +2782,9 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
+
+`observed` — publication bookkeeping added after the reviewer `PASS`: `git commit -m "docs(agents): align ledger publication policy with coordinator authority"` → `[main d385701] docs(agents): align ledger publication policy with coordinator authority`, `1 file changed, 85 insertions(+), 3 deletions(-)`; `git push` → `To https://github.com/comedius/XBridge-Series.git` / `8c863ec..d385701  main -> main`. Full hash `d385701642f5d756c4f6e0262893ca605009cc52` (`git rev-parse HEAD`); `PUBLICATION_STATUS: published` is set only after this confirmed push. No merge, tag, PR, history operation, build or CTest was performed.
