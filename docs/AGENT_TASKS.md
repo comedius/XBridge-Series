@@ -1195,8 +1195,8 @@ OWNER_APPROVALS: continuation order received; immediate release of the tests-onl
 | `SETUP-004` | `needs_owner`; owner-only session export/import | Owner executes supported commands and reports | No agent action | `docs/AGENT_TASKS.md:15,142-153` |
 | `SETUP-006` | `blocked`; failed worktree opening, unregistered checkout | Owner cleanup/further-attempt decision | No agent action | `docs/AGENT_TASKS.md:17,80-82,101` |
 | `SETUP-007` | `blocked`; nine specialists not installed | Owner persists scoped rules and installs agents | No agent action | `docs/AGENT_TASKS.md:18,103-106,272-288` |
-| `ai/README.md` patch | Applied and verified under `XB-OWNER-DOC-IMPLEMENTATION-02` (`PERMISSION_STATE: verified`, `REVIEW_STATUS: PASS`) | none; publication remains owner-only (F1) | No agent action; owner decides publication | `docs/AGENT_TASKS.md:636-645,2405-2467` |
-| Publication of all local `pass` work | Locally complete, unpublished | Owner staging/commit/PR/merge decision | No agent action | `docs/GITHUB_AGENT_WORKFLOW.md:7-9,49` |
+| `ai/README.md` patch | Applied and verified under `XB-OWNER-DOC-IMPLEMENTATION-02` (`PERMISSION_STATE: verified`, `REVIEW_STATUS: PASS`) | none (historical F1 framing; authoritative current policy at file end) | Historical snapshot: routine publication is now coordinator-authorized after checks and review | `docs/AGENT_TASKS.md:636-645,2405-2467`; `XB-AUTONOMY-ACTIVATION-03` |
+| Publication of all local `pass` work | Historical snapshot: locally complete and unpublished at that time; `XB-AUTONOMY-ACTIVATION-02` was committed and pushed, other packages remain `local_only` | historical F1 framing; authoritative current policy at file end | Historical snapshot: routine publication is now coordinator-authorized after checks and review | `docs/GITHUB_AGENT_WORKFLOW.md:7-9,49`; `XB-AUTONOMY-ACTIVATION-03` |
 
 ```yaml
 PACKAGE_ID: XB-0082
@@ -1212,7 +1212,7 @@ PROGRESS_UNITS: N/A
 ```
 
 `documented` — Single owner-decision list (question → recommendation → alternatives → impact → urgency → work that can continue):
-- `OWNER-PUBLICATION`: Which files/groups should be staged, committed and published, and what happens to PR #1? Recommendation: owner selects the 12 `READY_FOR_COMMIT` development documents only; alternatives: publish nothing, publish a narrower group, or publish more after review; impact: irreversible publication state; urgency: high only when owner wants publication; local documentation/test work continues.
+- `OWNER-PUBLICATION`: Which files/groups should be staged, committed and published, and what happens to PR #1? Recommendation: owner selects the 12 `READY_FOR_COMMIT` development documents only; alternatives: publish nothing, publish a narrower group, or publish more after review; impact: irreversible publication state; urgency: high only when owner wants publication; local documentation/test work continues. `documented` — historical F1 framing from `XB-0085`; the authoritative current policy is appended at the end of this file. Routine staging/commit/push/PR/merge of independently reviewed work is coordinator-authorized; PR #1 handling and any tag/release/strategic-branch/history decision remain owner decisions.
 - `OWNER-XB0082-SCOPE`: Approve split write set, status taxonomy and any future tool/CI/dependency for XB-0082? Recommendation: keep the current evaluation-only convention and defer tooling; alternatives: approve a generator/tool package; impact: new dependency/CI surface; urgency: medium; all other work continues.
 - `OWNER-XB0083-START`: Release a researcher package for authoritative re-verification (R-001…R-006, XB-0083)? Recommendation: approve a scoped read-only package with exact URLs and access dates; alternatives: defer; impact: evidence quality only; urgency: medium; tests and documentation continue.
 - `OWNER-XB0084-DECISIONS`: Resolve the seven XB-0084 decision-register items (baseline, license policy, ADRs, native/JIT policy, Xbox 360 scope, performance publication, FINAL_CLEANUP)? Recommendation: decide in the recorded order; alternatives: defer each; impact: gates all product implementation; urgency: medium; tests and cleanups continue.
@@ -2704,3 +2704,85 @@ PROGRESS_UNITS: N/A
 ```
 
 `documented` — Abschluss: Einmalige Inventur abgeschlossen, der einzige agentenausführbare Rest (veraltete Gegenwartsstatus zu E1/ARCH) umgesetzt, ein umfassendes Review mit einer gebündelten Korrektur und gezieltem Re-Check (`PASS`, `ACTIONABLE 0`). Alle sechs genannten offenen Punkte bleiben Owner-Entscheidungen; alle Git-/GitHub-Publikationsaktionen sind owner-only und nicht ausgeführt. Kein Produktcode-, Header-, Test-, CMake-, Preset-, ADR-, Konfigurations- oder Rechteänderung; kein Build und kein CTest in diesem Paket. Alle Änderungen bleiben lokal, uncommitted und unpubliziert. Paket 2 des regulären Entwicklungsplans ist agentenseitig startbereit; die Publikation erfordert eine Owner-Entscheidung.
+
+## XB-AUTONOMY-ACTIVATION-03 — ledger publication-policy alignment
+
+```text
+PACKAGE_ID:        XB-AUTONOMY-ACTIVATION-03
+PACKAGE_TYPE:      BUGFIX
+PRODUCT_BOUNDARY:  development-only
+GOAL:              Remove the residual contradiction between the ledger's present-tense "publication is owner-only / no agent action" cells and the current coordinator publication authority established by XB-AUTONOMY-ACTIVATION-02.
+FILES:             docs/AGENT_TASKS.md (sole writer: coordinator)
+ALLOWED:           Append one authoritative current-policy clarification; mark three historical inventory/owner-decision cells as historical; record envelope, evidence, reviewer verdict and Git results in the same file.
+FORBIDDEN:         Product code, tests, CMake/presets, ADRs, LICENSE, agent files, opencode.jsonc, permissions, other documentation files, history rewriting, destructive Git commands, new publication actions beyond the already-pushed activation-02 commits, build/CTest/function tests.
+ACCEPTANCE:        The three live-looking cells in the open-package inventory and the consolidated owner-decision list are explicitly labeled historical; one authoritative current-policy section with a global supersession statement is appended; the policy cites AGENTS.md §8, docs/AGENT_WORKFLOW.md and docs/AGENT_AUTONOMY.md A4/A5; independent reviewer PASS; git diff --check EXIT=0.
+TESTS:             Read-back of the three edited cells and the appended section; literal grep for live owner-only publication phrasing; git diff --check. No build/CTest for pure documentation.
+REVIEW:            Architect skipped: single development-only documentation file with no interface, module boundary, dependency or ADR change. Independent reviewer mandatory; bundled correction rounds limited to two.
+WORKTREE:          Main checkout D:\XBridge 1.0\XBridge-Series-Autonomy on branch main.
+OWNER_APPROVALS:   No new owner decision: factual documentation alignment inside the coordinator's confirmed write right; policy and authority are unchanged.
+```
+
+`observed` — effective write right verified before assignment: `.opencode/agents/coordinator.md:5-7` denies `edit "*"` but `:8-10` grants `edit` on `docs/AGENT_TASKS.md`; under the documented precedence (global rules first, later matching agent rule wins) the exact allow governs this path. No global `edit` rule in `opencode.jsonc:126-139` covers `docs/AGENT_TASKS.md`, and no hard policy at `:142-172` denies it. Sole writer: coordinator. Reviewer is read-only.
+
+`observed` — baseline in the main checkout before any edit: `git branch --show-current` → `main`; `git rev-parse HEAD` → `8c863ec86ed587d70afea59c36998f3696eef4f4`; `git status --short --branch` → `## main...origin/main` (clean, in sync); `git status --porcelain=v1 --untracked-files=all` → no output.
+
+`documented` — authoritative current publication policy: routine staging, commit, push, merge and PR of completed, independently reviewed project changes are performed by the coordinator after the required checks and review (`AGENTS.md` §8; `docs/AGENT_WORKFLOW.md` "Standard flow" item 9 and "Permission model"; `docs/AGENT_AUTONOMY.md` A4/A5 grades). Within publication routing only, tag, release, strategic branch decisions and history rewriting remain owner decisions. PR #1 handling remains an owner decision because the GitHub CLI is unavailable and PR state is `unknown`. This statement does not change any non-publication owner gate: `SETUP-004` session export/import, `SETUP-006` worktree cleanup, `SETUP-007` specialist installation, and all ADR, license, public-interface, destructive-operation and product-release decisions remain current owner decisions (`docs/AGENT_WORKFLOW.md:190,202,292`; `docs/AGENT_AUTONOMY.md:39,47`; `AGENTS.md` §3, §7). This is a policy statement only: it does not publish any additional package.
+
+`documented` — publication-scoped supersession: all other **publication-related** `owner-only` / `publication remains owner-only` statements in this ledger are historical per-package records from packages completed before this alignment. They are preserved verbatim and are superseded for current-state interpretation of routine publication by the policy above; they are not rewritten as new facts. The only cells annotated in this package are the `ai/README.md` patch row and the `Publication of all local pass work` row in the open-package inventory (`:1198-1199`) and the `OWNER-PUBLICATION` bullet (`:1215`). Non-publication owner gates listed above are explicitly excluded from this supersession and remain current.
+
+`observed` — executed publication evidence for the preceding package: commit `71faef915996ed4e459cf318111a80daa4719013` (`13 files changed, 229 insertions(+), 64 deletions(-)`) and bookkeeping commit `8c863ec86ed587d70afea59c36998f3696eef4f4`; `git push` returned `To https://github.com/comedius/XBridge-Series.git` / `8339582..71faef9  main -> main` and `71faef9..8c863ec  main -> main`, both `EXIT=0`. `gh auth status` returned `CommandNotFoundException`, `EXIT=1`; remote write authentication is `observed` via Git credentials, PR state remains `unknown`.
+
+`documented` — deliberate omissions: no product code, tests, CMake, preset, ADR, license, agent or permission change; no new build, CTest or product function test; no additional commit, push, PR or merge in this package; historical per-package records were labeled rather than rewritten.
+
+```yaml
+PACKAGE_ID: XB-AUTONOMY-ACTIVATION-03
+PARENT_ID: XB-AUTONOMY-ACTIVATION-02
+DEPENDENCIES: XB-AUTONOMY-ACTIVATION-02
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-AUTONOMY-ACTIVATION-03-C1 — bundled review correction (round 1 of 2)
+
+```text
+PACKAGE_ID:        XB-AUTONOMY-ACTIVATION-03-C1
+PACKAGE_TYPE:      BUGFIX
+PRODUCT_BOUNDARY:  development-only
+GOAL:              Close both ACTIONABLE reviewer findings by scoping the policy and supersession statements to publication and by recording the post-edit Git verification in the ledger.
+FILES:             docs/AGENT_TASKS.md (sole writer: coordinator)
+ALLOWED:           Narrow the policy/supersession wording with an explicit non-publication carve-out; name the three annotated cells; append exact post-edit verification commands and results; ledger record.
+FORBIDDEN:         Product code, tests, CMake/presets, ADRs, LICENSE, agent files, opencode.jsonc, permissions, other documentation files, history rewriting, destructive Git commands, severity downgrade, build/CTest/function tests, new publication action.
+ACCEPTANCE:        Read-back shows the publication qualifier, the non-publication carve-out, the three named annotated cells and the exact post-edit diff-check/diff-stat/status results; independent reviewer re-check PASS; git diff --check EXIT=0.
+TESTS:             Read-back and git diff --check. No build/CTest for pure documentation.
+REVIEW:            Mandatory independent re-check; round 1 of 2.
+WORKTREE:          Main checkout D:\XBridge 1.0\XBridge-Series-Autonomy on branch main.
+OWNER_APPROVALS:   Covered by the XB-AUTONOMY-ACTIVATION-03 envelope; no new owner decision.
+```
+
+`documented` — finding classification from reviewer `ses_debe49b3cffeoUlxKbSev18hbO`, verdict `NEEDS_CHANGE`: `ARC-03-01` (MEDIUM, `ACTIONABLE`) and `ARC-03-02` (MEDIUM, `ACTIONABLE`) are corrected in this single bundle; `ARC-03-03` (`UNKNOWN`, reviewer tooling limitation) needs no writer correction and remains recorded as a limitation. `OWNER_DECISION` 0, `NON_BLOCKING` 0. No severity was downgraded.
+
+`documented` — root causes: (A) a publication-scoped A5 authority change was generalized into an all-owner-decision supersession; corrected by narrowing the policy and supersession paragraphs to publication and adding an explicit carve-out for `SETUP-004`/`006`/`007` and ADR/license/public-interface/destructive/product-release gates; (B) the package recorded baseline and previous-package Git facts but omitted its own post-edit verification; corrected by appending the exact commands and results below.
+
+`observed` — post-edit verification reported by the coordinator and not independently re-executed by the reviewer. Initial writer state (three cells plus appended section): `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git diff HEAD --no-ext-diff --stat` → `docs/AGENT_TASKS.md | 48 +++++++++++++++++++++++++++++++++++++++++++++---`, `1 file changed, 45 insertions(+), 3 deletions(-)`; `git status --porcelain=v1 --untracked-files=all` → ` M docs/AGENT_TASKS.md` only; `git branch --show-current` → `main`; `git rev-parse HEAD` → `8c863ec86ed587d70afea59c36998f3696eef4f4`. The two C1 wording replacements were made in place and temporarily produced the same `45 insertions(+), 3 deletions(-)`; appending this C1 record increased the final state to `git diff HEAD --no-ext-diff --stat` → `docs/AGENT_TASKS.md | 71 ++++++++++++++++++++++++++++++++++++++++++++++++++---`, `1 file changed, 68 insertions(+), 3 deletions(-)`. Final re-verification: `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git diff HEAD --no-ext-diff --name-only` → `docs/AGENT_TASKS.md`; `git status --porcelain=v1 --untracked-files=all` → ` M docs/AGENT_TASKS.md` only. No build, CTest, product function test or additional publication action was performed.
+
+`observed` — mandatory independent re-check (`ses_debe49b3cffeoUlxKbSev18hbO`): **PASS**, Case A. `ARC-03-01` (MEDIUM, `ACTIONABLE`) and `ARC-03-02` (MEDIUM, `ACTIONABLE`) are closed against their success criteria; `ACTIONABLE` 0, `OWNER_DECISION` 0, `NON_BLOCKING` 0, `UNKNOWN` 1 (`ARC-03-03`: reviewer has no shell and `.git/**` reads are hard-denied, so Git facts remain writer-reported, not independently re-executed). No new finding, no over-correction and no severity downgrade. One bundled correction round used; the reviewer explicitly states that no further review is needed.
+
+`documented` — completion: package status `pass` in the parent YAML block above; the current-policy alignment and the three historical cell labels are accepted. Deliberately unchanged: all other historical publication rows, non-publication owner gates, product code, tests, CMake/presets, ADRs, LICENSE, agent files, `opencode.jsonc`, permissions, and all prior review verdicts. No build, CTest or product function test was run. Commit and push are the remaining authorized publication step, recorded in a separate bookkeeping update after execution.
+
+```yaml
+PACKAGE_ID: XB-AUTONOMY-ACTIVATION-03-C1
+PARENT_ID: XB-AUTONOMY-ACTIVATION-03
+DEPENDENCIES: XB-AUTONOMY-ACTIVATION-03
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
