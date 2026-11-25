@@ -48,6 +48,9 @@ permissions:
     resource: "ai/README.md"
     effect: allow
   - action: edit
+    resource: "ai/agents/**"
+    effect: allow
+  - action: edit
     resource: "docs/DECISIONS.md"
     effect: deny
   - action: edit
@@ -134,23 +137,40 @@ permissions:
   - action: shell
     resource: "git merge *"
     effect: allow
-  - action: shell
-    resource: "gh auth status"
-    effect: allow
-  - action: shell
-    resource: "gh pr *"
-    effect: allow
-  - action: shell
-    resource: "gh repo view *"
-    effect: allow
+  # GitHub CLI: read-only PR inspection plus two exact owner-authorized PR-17 actions.
   - action: shell
     resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' auth status"
     effect: allow
   - action: shell
-    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr *"
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' repo view *"
     effect: allow
   - action: shell
-    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' repo view *"
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr view *"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr list *"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr checks *"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr diff *"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr status"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr ready 17"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr merge 17 --merge"
+    effect: allow
+  # Read-only fetch rights; branch switching stays hard-denied.
+  - action: shell
+    resource: "git fetch origin"
+    effect: allow
+  - action: shell
+    resource: "git fetch origin architecture/guest-address-space-foundation"
     effect: allow
   - action: webfetch
     resource: "*"

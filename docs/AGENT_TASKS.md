@@ -2859,3 +2859,43 @@ PROGRESS_UNITS: N/A
 `observed` — PR #1 state resolved after the owner completed `gh auth login`: `& 'C:\Program Files\GitHub CLI\gh.exe' auth status` → `github.com`, `✓ Logged in to github.com account comedius (keyring)`, `Active account: true`, `Git operations protocol: https`, `Token scopes: 'gist', 'read:org', 'repo', 'workflow'`. `& 'C:\Program Files\GitHub CLI\gh.exe' pr view 1 --repo comedius/XBridge-Series` → `title: Harden Windows build and test configuration`, `state: CLOSED`, `author: comedius`, `number: 1`, `url: https://github.com/comedius/XBridge-Series/pull/1`, `additions: 108`, `deletions: 11`, `auto-merge: disabled`. `& 'C:\Program Files\GitHub CLI\gh.exe' pr view 1 --repo comedius/XBridge-Series --json number,title,state,closedAt,mergedAt,mergeCommit,url,baseRefName,headRefName` → `{"baseRefName":"main","closedAt":"2026-11-25T08:03:23Z","headRefName":"feature/build-test-hardening","mergeCommit":null,"mergedAt":null,"number":1,"state":"CLOSED",...}`. `observed` — PR #1 is closed without merge (`mergedAt` and `mergeCommit` are null); the earlier `unknown` statement in the enablement envelope is superseded by this read-only observation. No PR #1 mutation, reopen, merge or close was performed; no owner decision on PR #1 remains necessary because its state is already final.
 
 `observed` — repository-wide PR inventory via `& 'C:\Program Files\GitHub CLI\gh.exe' pr list --repo comedius/XBridge-Series --state all --limit 30`: PRs 18, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3 and 2 are `MERGED`; PR 17 (`docs(memory): define guest address-space architecture baseline`) is `DRAFT`; PR 1 is `CLOSED` without merge. No open non-draft pull request was found. This inventory is read-only evidence only; it does not authorize any PR action, and PR #17 draft status and its disposition remain an owner matter, not part of any completed package.
+
+## XB-NEXT-DEVELOPMENT-01-A — autonomy configuration repair
+
+```text
+PACKAGE_ID:        XB-NEXT-DEVELOPMENT-01-A
+PACKAGE_TYPE:      BUGFIX
+PRODUCT_BOUNDARY:  development-only
+GOAL:              Repair concrete autonomy defects found in the effective configuration so the owner-authorized workflow can execute without unnecessary or contradictory restrictions.
+FILES:             opencode.jsonc, .opencode/agents/coordinator.md, .opencode/agents/developer.md, .opencode/agents/tester.md, ai/README.md, ai/agents/*.md, docs/AGENT_TASKS.md
+ALLOWED:           Narrow gh rights to read operations plus exact PR-17 ready/merge commands; add narrowly scoped git fetch rights; remove duplicate shell allows; add the coordinator's ai/agents/** edit right; rewrite ai/README.md to the current six-agent model; label legacy ai/agents roles as historical/inactive; record evidence in the ledger.
+FORBIDDEN:         Product code, tests, CMake/presets, ADRs, LICENSE, hard-policy or secret-rule changes, blanket wildcards, new agents, history rewrite, destructive Git commands, build/CTest/function tests for the configuration work.
+ACCEPTANCE:        No `gh pr *` blanket allow remains; no duplicate agent shell allow remains; reviewer is read-only; exactly one writer per path; coordinator can fetch and inspect PRs and perform the explicitly authorized PR-17 ready/merge commands; ai/README.md matches the six installed agents; legacy roles are marked inactive; independent reviewer PASS; git diff --check EXIT=0.
+TESTS:             Exact config read-back, grep for forbidden patterns, targeted permission verification of the new narrow commands, git diff --check. No build/CTest for configuration-only work.
+REVIEW:            Architect skipped: no product interface, module boundary, dependency or ADR change. Independent reviewer mandatory.
+WORKTREE:          Main checkout D:\XBridge 1.0\XBridge-Series-Autonomy on branch main.
+OWNER_APPROVALS:   Owner explicitly authorized direct correction of config defects, README alignment, legacy-role cleanup, PR-17 finalization/merge, and the tests-only package.
+```
+
+`observed` — baseline before edits: `git rev-parse HEAD` → `b8265eb7ed7e17d6e36808c762f746122188a92b`; `git branch --show-current` → `main`; `git status --porcelain=v1 --untracked-files=all` → no output; `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`.
+
+`observed` — defects confirmed by direct read: (1) blanket `gh pr *` at `opencode.jsonc:106` and `.opencode/agents/coordinator.md:140-142` plus absolute-path `& '…gh.exe' pr *` at `opencode.jsonc:109` and `coordinator.md:150` permit mutating PR subcommands; (2) duplicate allows in `developer.md` (`:74-82` and `:89-101`) and `tester.md` (`:39-47` and `:53-68`); (3) coordinator has no `edit` allow for `ai/agents/**`; (4) `ai/README.md:3,28` retains owner-only publication framing; (5) `ai/agents/` contains six legacy role files with no inactive marker.
+
+`documented` — implementation plan: replace blanket gh PR rights with `pr view/list/checks/diff/status` read rights and two exact PR-17 mutation rights (`pr ready 17`, `pr merge 17 --merge`); add `git fetch origin` and `git fetch origin architecture/guest-address-space-foundation` as read-only allows so PR work can be based on the real branch without hard-denied branch switching; remove duplicate allows; add `ai/agents/**` write right to the coordinator; rewrite README; add a single historical-status header to each legacy role file. Public-interface and hard-policy rules are untouched.
+
+`observed` — writer verification after implementation: `git fetch origin architecture/guest-address-space-foundation` → `From https://github.com/comedius/XBridge-Series`, `* branch architecture/guest-address-space-foundation -> FETCH_HEAD`; `& 'C:\Program Files\GitHub CLI\gh.exe' pr view 17 --repo comedius/XBridge-Series --json number,state,isDraft` → `{"isDraft":true,"number":17,"state":"OPEN"}`; grep confirmed no `gh pr *`, no name-based `gh` allow and no temporary install/login allows; `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git diff HEAD --no-ext-diff --stat` → `12 files changed, 125 insertions(+), 44 deletions(-)`; `git diff HEAD --no-ext-diff --name-only` → exactly the 12 declared files. No build, CTest or product function test was run for this configuration-only package.
+
+`observed` — independent reviewer verdict `PASS` (Case A), `ACTIONABLE 0`, `OWNER_DECISION 0`, `NON_BLOCKING 0`, `UNKNOWN 0`. The reviewer read all 12 declared files and surrounding context but could not re-execute shell commands; Git/install/runtime facts therefore remain writer-reported. Hard policies, secret rules, reviewer read-only status and subagent publication denial were verified from the effective files. No correction was required and no re-review was started.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-01-A
+PARENT_ID: XB-NEXT-DEVELOPMENT-01
+DEPENDENCIES: N/A
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_applicable
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```

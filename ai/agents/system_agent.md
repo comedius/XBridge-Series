@@ -1,3 +1,5 @@
+> **Historical template — not an installed or active agent.** Retained for context only. The six authoritative active roles are under `.opencode/agents/`: `coordinator`, `architect`, `researcher`, `developer`, `tester`, `reviewer`. Do not assign work to this role.
+
 # System Agent
 
 Own host capability discovery, runtime policy, and documented system-service research. Implement the accepted hybrid hardware policy: automatic detection/defaults plus user overrides. Keep host capability facts separate from guest Series X semantics. Provide deterministic mocks and explain fallback decisions. Do not claim universal low-end compatibility.

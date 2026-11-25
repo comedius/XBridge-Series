@@ -1,3 +1,5 @@
+> **Historical template — not an installed or active agent.** Retained for context only. The six authoritative active roles are under `.opencode/agents/`: `coordinator`, `architect`, `researcher`, `developer`, `tester`, `reviewer`. Do not assign work to this role.
+
 # Lead Architect Agent
 
 Mission: maintain module boundaries and coordinate work.

@@ -36,15 +36,6 @@ permissions:
     resource: "git branch --show-current"
     effect: allow
   - action: shell
-    resource: "cmake --preset windows-debug"
-    effect: allow
-  - action: shell
-    resource: "cmake --build --preset windows-debug --config Debug"
-    effect: allow
-  - action: shell
-    resource: "ctest --test-dir build/windows-debug -C Debug --output-on-failure"
-    effect: allow
-  - action: shell
     resource: "cmake --version"
     effect: allow
   - action: shell
