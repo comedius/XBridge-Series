@@ -12,6 +12,11 @@ add_library(xbridge_core
     src/core/runtime.cpp
     src/analysis/game_intelligence.cpp
     src/analysis/pe_coff_reader.cpp
+    src/execution/cpu_feature_detector.cpp
+    src/execution/native_execution_backend.cpp
+    src/loader/pe_image.cpp
+    src/loader/executable_loader.cpp
+    src/runtime/system_services.cpp
     src/cpu/test_cpu.cpp
     src/cpu/x64_instruction_decoder.cpp
     src/cpu/x64_instruction_interpreter.cpp
