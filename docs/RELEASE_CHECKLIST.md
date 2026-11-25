@@ -54,3 +54,7 @@ These items are development infrastructure only. None of them is a `FINAL_CLEANU
 ## Owner sign-off
 
 - [ ] Project owner accepts the product artifact and schedules publication.
+
+## Repository publication policy
+
+The XBridge development repository is public. Project-related AI/agent configuration, prompts, workflow documentation, research and automation may be committed and published here. These materials are excluded only from a future end-user product package unless explicitly selected by its reviewed allowlist; they are not excluded from this public repository. Only private personal data and actual secrets/credentials are excluded from publication. Older checklist wording that calls this a private development repository is superseded by this policy.

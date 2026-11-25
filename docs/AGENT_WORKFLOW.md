@@ -291,3 +291,7 @@ The current queue lives in `docs/AGENT_TASKS.md` (packages) and `docs/ROADMAP.md
 - Shell access for the coordinator is limited by role rules (`cmake`, `ctest`, `opencode` are denied); verification is delegated to `tester`, which may run the allowlisted commands.
 - Not automatable by agents: `opencode session export/import` (no allowlisted command, no Code Mode tool, and all roles deny shell `opencode *`), editing `.opencode/**` or `opencode.jsonc`, and installing or changing permissions. These require one owner action each; the coordinator bundles such requests.
 - Interactive TUI permission prompts and a second-PC test remain `unknown`.
+
+## Public repository clarification (owner policy, 2026-11-25)
+
+This repository is public. Project-related AI/agent configuration, prompts, commands, research, workflow documentation and development automation are allowed to be stored and published here. Do not classify those materials as private or forbidden from repository publication solely because they are AI-related. The development/product boundary is a packaging boundary: these materials are not automatically included in a future end-user product distribution, which must use an explicit reviewed allowlist. Only private personal data and actual secrets/credentials are excluded from publication. This clarification supersedes any wording above that calls this repository private or says these project materials must not be published.
