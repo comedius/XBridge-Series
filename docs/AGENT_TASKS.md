@@ -2788,3 +2788,68 @@ PROGRESS_UNITS: N/A
 ```
 
 `observed` — publication bookkeeping added after the reviewer `PASS`: `git commit -m "docs(agents): align ledger publication policy with coordinator authority"` → `[main d385701] docs(agents): align ledger publication policy with coordinator authority`, `1 file changed, 85 insertions(+), 3 deletions(-)`; `git push` → `To https://github.com/comedius/XBridge-Series.git` / `8c863ec..d385701  main -> main`. Full hash `d385701642f5d756c4f6e0262893ca605009cc52` (`git rev-parse HEAD`); `PUBLICATION_STATUS: published` is set only after this confirmed push. No merge, tag, PR, history operation, build or CTest was performed.
+
+## XB-AUTONOMY-GH-ENABLE-01 — GitHub CLI inspection enablement
+
+```text
+PACKAGE_ID:        XB-AUTONOMY-GH-ENABLE-01
+PACKAGE_TYPE:      FEATURE
+PRODUCT_BOUNDARY:  development-only
+GOAL:              Enable coordinator-side GitHub CLI inspection of PR #1 after the owner selected "Enable gh inspection for me", by installing gh and adding the minimum scoped shell rights.
+FILES:             .opencode/agents/coordinator.md, opencode.jsonc, docs/AGENT_TASKS.md (all coordinator-serialized; coordinator sole writer)
+ALLOWED:           Add narrow exact shell allows for the installed gh absolute path; record owner decisions, exact commands, actual results and the pending authentication gate in this ledger.
+FORBIDDEN:         Product code, tests, CMake/presets, ADRs, LICENSE, hard-policy or global deny changes, blanket wildcards, secret/credential extraction or storage, PR mutation, merge, tag, history rewrite, build/CTest/function tests.
+ACCEPTANCE:        gh.exe installed and executable via absolute path; net-new rights limited to three gh inspection allows; discovery/install allows removed after use; owner authentication recorded as pending; independent reviewer PASS; git diff --check EXIT=0.
+TESTS:             Exact command read-back (where.exe gh, winget --version, winget install, Get-Item, gh auth status, rejected --git-credential attempt); git diff --check. No build/CTest for configuration-only work.
+REVIEW:            Architect skipped: permission/tooling configuration with no product interface, module boundary, dependency or ADR change; coordinator is authorized for these config paths. Independent reviewer mandatory.
+WORKTREE:          Main checkout D:\XBridge 1.0\XBridge-Series-Autonomy on branch main.
+OWNER_APPROVALS:   Owner selected "Enable gh inspection for me" and then "You run gh auth login (Recommended)"; no broader authorization was inferred.
+```
+
+`observed` — baseline before any edit: `git rev-parse HEAD` → `f753f541dbcc5ff946ce206d6780156a254ecb2c`; `git branch --show-current` → `main`; `git status --porcelain=v1 --untracked-files=all` → no output. The name-based allows `gh auth status`, `gh pr *`, `gh repo view *` were already present in `opencode.jsonc:105-107` and `.opencode/agents/coordinator.md:137-145` and were effective (they executed rather than being denied); the only blocker was the missing binary.
+
+`observed` — install sequence with exact commands and results: `gh auth status` → `Die Benennung "gh" wurde nicht als Name eines Cmdlet ... erkannt`, `CommandNotFoundException`, `EXIT=1`. `where.exe gh` → `INFORMATION: Es konnten keine Dateien mit dem angegebenen Muster gefunden werden`, `WHERE_EXIT=1`. `winget --version` → `v1.29.380`, `WINGET_EXIT=0`. `winget install --id GitHub.cli -e --accept-source-agreements --accept-package-agreements` → `Found GitHub CLI [GitHub.cli] Version 2.105.0`, `Successfully verified installer hash`, `Successfully installed`. `Get-Item 'C:\Program Files\GitHub CLI\gh.exe'` → file present (`Length 41905976`, `LastWriteTime 17.11.2026 23:55`); `Get-Item 'C:\Users\Dennis\AppData\Local\Programs\GitHub CLI\gh.exe'` → `ItemNotFoundException`, `EXIT=1`.
+
+`observed` — the current OpenCode shell process inherited a pre-install `PATH`, so name-based `gh` remained unresolved after installation. Three absolute-path allows were added to both configuration files: `& 'C:\Program Files\GitHub CLI\gh.exe' auth status`, `& 'C:\Program Files\GitHub CLI\gh.exe' pr *`, `& 'C:\Program Files\GitHub CLI\gh.exe' repo view *`. These are effective this session: `& 'C:\Program Files\GitHub CLI\gh.exe' auth status` executed and returned `You are not logged into any GitHub hosts`, `EXIT=1` (a runtime result, not a permission denial).
+
+`observed` — least-privilege cleanup: the temporary discovery/install allows (`where.exe gh`, `winget --version`, exact `winget install ...`) and a failed `auth login --git-credential` allow were removed after use. `--git-credential` returned `unknown flag` with the v2.105.0 usage text, `EXIT=1`; no credential was extracted, read or stored at any point. Net-new rights are exactly the three absolute-path gh inspection allows in each file.
+
+`documented` — pending owner action: authentication must be performed by the owner via `gh auth login` in their own terminal (browser/device flow) or by a token they set themselves; the coordinator neither handles nor stores credentials. Until authentication succeeds, PR #1 state remains `unknown`; no PR inspection, mutation, merge or close has been performed. This package enables inspection only; it does not decide PR #1 disposition.
+
+`documented` — deliberate omissions: no product code, tests, CMake/presets, ADR, LICENSE, hard-policy or global deny change; no blanket wildcard; no secret handling; no build, CTest or product function test; no PR action, merge, tag or history operation.
+
+`observed` — self-check taken before this ledger record was appended: `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git diff HEAD --no-ext-diff --stat` → `.opencode/agents/coordinator.md | 9 +++++++++`, `opencode.jsonc | 3 +++`, `2 files changed, 12 insertions(+)`; status → exactly those two modified files. The final-state verification after this record is appended is given below.
+
+```yaml
+PACKAGE_ID: XB-AUTONOMY-GH-ENABLE-01
+PARENT_ID: XB-AUTONOMY-ACTIVATION-03
+DEPENDENCIES: XB-AUTONOMY-ACTIVATION-03
+STATUS: in_progress
+IMPLEMENTATION_STATE: self_checked
+REVIEW_STATUS: review_pending
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+`observed` — independent review (`ses_debd0c873ffedqwX0ErUF3I2ZH`): **PASS**, Case A. Classification: `ACTIONABLE` 0, `OWNER_DECISION` 0, `NON_BLOCKING` 2, `UNKNOWN` 1. Severity: INFO 1, LOW 2, no MEDIUM/HIGH/CRITICAL. No severity was downgraded and no prior finding was reopened. The reviewer confirmed the net-new rights are exactly the three scoped absolute-path gh allows in each config file, the temporary discovery/install/failed login allows are gone, no hard policy or global deny was weakened, the coordinator owns all three paths, the envelope is complete, YAML tokens/order are valid, pending authentication is honestly recorded, PR #1 is not claimed, and no product code, tests, CMake/presets, ADR, LICENSE, secret handling, build, CTest or PR mutation appears in the diff.
+
+`documented` — disposition of non-blocking findings: `GH-02` (LOW, `NON_BLOCKING`) noted that the earlier self-check snapshot understated the final change set; this is resolved by the final-state verification below and by making the snapshot boundary explicit above. `GH-03` (LOW, `NON_BLOCKING`) noted that `& '…gh.exe' pr *` also matches mutating subcommands; the allow exactly mirrors the pre-existing name-based `gh pr *` (`coordinator.md:141`, `opencode.jsonc:106`) and therefore broadens nothing, and the workflow prohibition on PR mutation remains in force regardless of capability. No PR action was performed. `GH-01` (`UNKNOWN`, INFO) is the reviewer's tooling limitation: no shell and hard-denied `.git/**` reads, so all Git/install/runtime facts remain writer-reported, not independently re-executed.
+
+`observed` — final-state verification after this ledger record: `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git diff HEAD --no-ext-diff --stat` → per-file totals `.opencode/agents/coordinator.md` 9 insertions, `docs/AGENT_TASKS.md` 65 insertions, `opencode.jsonc` 3 insertions; summary `3 files changed, 77 insertions(+)`. Figures are the final state after this ledger record; replacing this line in place keeps the line count unchanged. `git diff HEAD --no-ext-diff --name-only` → `.opencode/agents/coordinator.md`, `docs/AGENT_TASKS.md`, `opencode.jsonc`; `git status --porcelain=v1 --untracked-files=all` → exactly those three modified files. `git rev-parse HEAD` → `f753f541dbcc5ff946ce206d6780156a254ecb2c`; `git branch --show-current` → `main`. No build, CTest or product function test was run.
+
+`documented` — completion: enablement is accepted; authentication by the owner and PR #1 disposition remain pending owner actions and are not part of this package verdict. Commit and push are the remaining authorized publication step, recorded in a separate bookkeeping update after execution.
+
+```yaml
+PACKAGE_ID: XB-AUTONOMY-GH-ENABLE-01
+PARENT_ID: XB-AUTONOMY-ACTIVATION-03
+DEPENDENCIES: XB-AUTONOMY-ACTIVATION-03
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```

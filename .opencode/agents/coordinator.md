@@ -143,6 +143,15 @@ permissions:
   - action: shell
     resource: "gh repo view *"
     effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' auth status"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr *"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' repo view *"
+    effect: allow
   - action: webfetch
     resource: "*"
     effect: deny
