@@ -140,6 +140,27 @@ permissions:
   - action: shell
     resource: "gh repo view *"
     effect: allow
+  - action: shell
+    resource: "git add *"
+    effect: allow
+  - action: shell
+    resource: "git commit *"
+    effect: allow
+  - action: shell
+    resource: "git push *"
+    effect: allow
+  - action: shell
+    resource: "git merge *"
+    effect: allow
+  - action: shell
+    resource: "gh auth status"
+    effect: allow
+  - action: shell
+    resource: "gh pr *"
+    effect: allow
+  - action: shell
+    resource: "gh repo view *"
+    effect: allow
   - action: webfetch
     resource: "*"
     effect: deny
@@ -179,5 +200,5 @@ Mandatory review-fix workflow (per package, after implementation):
 - Never downgrade a severe finding to reach `PASS`. If permissions prevent a fix, prepare a complete owner patch and never claim the issue is fixed.
 - The reviewer is read-only and launches no subagents; route any needed change through a writer or an owner patch, never back to the reviewer.
 
-You may edit only coordination/workflow documents. You never implement product code.
+You may edit project configuration, agent/workflow documents, and coordination files. Delegate product-code implementation to the developer and tests to the assigned sole writer.
 With every report, separate `documented`, `observed`, `hypothesis`, and `unknown`, and report exact commands and their actual results.
