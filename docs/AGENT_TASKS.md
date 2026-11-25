@@ -18,6 +18,8 @@ Machine-specific paths in this file are a mix of neutral placeholders (`<SETUP_W
 | SETUP-007 | FEATURE | development-only | blocked | coordinator + architect + reviewer | Aufbau des autonomen KI-Entwicklungsteams: Analyse abgeschlossen, neun Spezialisten und Delegationsmatrix entworfen, autonomer Zyklus dokumentiert. **Blockiert:** nur sechs Agentendateien installiert; Schreibversuche für neue Agentendateien → `Permission denied: edit`; persönliche Freigabe wurde nicht in `coordinator.md` persistiert. Reviewer-Verdikt (session `ses_dfc1366f2ffeL7y2bkyRNPraAs`): `NEEDS_CHANGE` (u. a. TEST-OWNERSHIP-Konflikt, veraltete `PORTABLE_SETUP.md`, SETUP-007-Status widersprüchlich). | Owner muss minimale Regeln in `coordinator.md` persönlich persistieren; Review-Findings für SETUP-007 ausstehend |
 | RESEARCH-007 | RESEARCH | development-only | pass | researcher + architect + reviewer | Analyse von `omonkeyz/xbox-emulator` und Upstream `drycheetah84/TomBox` für XBridge. Nur 6 Agenten installiert; die neun angefragten Spezialagenten sind nicht eingerichtet/freigegeben und werden nicht aufgerufen – ihre Themenbereiche wurden von `architect` und `researcher` abgedeckt (Einschränkung dokumentiert). Abgeschlossen: 5 Doku-Dateien + Register-Eintrag + 4 abgeleitete Pakete (`planned`). Reviewer Runde 1 `NEEDS_CHANGE` → Korrekturpaket `RESEARCH-007-C1` → Finalreview `PASS`. Keine Codeübernahme, kein ADR, keine Produkt-/Test-/CMake-/Preset-/Agenten-Änderung. | Keine für die Forschung selbst; spätere Codeübernahme/ADR braucht eigene Owner-Entscheidung |
 | XB-0081 | BUGFIX | development-only | pass | coordinator + reviewer | Vom Owner freigegebene Korrektur der Entwicklungsdokumentation in genau vier Dateien (`AGENT_WORKFLOW.md`, `ROADMAP.md`, `AGENT_TASKS.md`, `RELEASE_CHECKLIST.md`); `coordinator` einziger Schreiber. Installed-Role-Status präzisiert, `test-engineer` bleibend future-planned, „read-only"-Formulierung korrigiert, historische Snapshots als `superseded` markiert, explizite Unresolved-Liste ergänzt. Reviewer Runde 1 `NEEDS_CHANGE` (2 HIGH/3 MEDIUM/2 LOW) → Korrekturrunde 1 → Finalreview `PASS`. Keine Produkt-/Test-/CMake-/Preset-/Agenten-/Rechte-Änderung, kein Commit. 26 Working-Tree-Einträge erhalten; `git diff --check` `EXIT=0` (nur CRLF-Hinweis). | Keine; weiterhin blockiert: SETUP-004/006/007, veraltete `PORTABLE_SETUP.md` (Owner-Aktion). Keine weiteren Pakete ohne separate Freigabe |
+| XB-AUTONOMY-ACTIVATION-01 | FEATURE | development-only | pass | coordinator + reviewer | Konfigurationsprüfung aller Ebenen abgeschlossen; alle fünf Subagenten erfolgreich aufgerufen; eine shadowed Git-Read-Regel im Coordinator korrigiert und verifiziert; veraltete Berechtigungsdoku in zwei gebündelten Runden korrigiert; Reviewer Runde 1 `NEEDS_CHANGE` (7 Findings) → C1 → Runde 2 `NEEDS_CHANGE` (1 offen) → C2 → Finalreview `PASS` (7/7 geschlossen, 0 neue Findings); kein Build/CTest/Produktcode, kein Commit/PR. Final: `git diff --check` `EXIT=0`, 3 Dateien; `93 insertions(+), 14 deletions(-)` zum Review-Zeitpunkt, `95 insertions(+), 14 deletions(-)` nach Ledger-Abschluss. | Extern: GitHub-CLI nicht im PATH (`gh` CommandNotFoundException); Agenten können `opencode debug *` nicht ausführen; Root-Laufwerkprüfung vom User abgelehnt |
+| XB-AUTONOMY-ACTIVATION-02 | FEATURE | development-only | pass | coordinator + reviewer | Finaler Abgleich von Agentenregeln, Berechtigungen und Prozessdokumenten; veraltete Owner-Only-/Private-Repo-/Pfadangaben korrigiert; `opencode.jsonc` und sechs Agenten-Frontmatter unverändert und konsistent; kein Build/CTest/Produktcode. Reviewer Runde 1 `NEEDS_CHANGE` (2 ACTIONABLE) → C1 → Re-Check `NEEDS_CHANGE` (1 neue ACTIONABLE) → C2 → Finalreview `PASS` (3/3 Findings geschlossen, 0 neue, 2 Korrekturrunden). Final: `git diff --check` `EXIT=0`, 13 Dateien; `223 insertions(+), 64 deletions(-)`. Commit wird als abschließender Paketschritt ausgeführt. | Extern: `gh` weiterhin nicht verfügbar; PR-Verwaltung und Remote-Autorisierung `unknown` bis Push |
 
 Do not mark a package `pass` unless commands and results have actually been recorded.
 
@@ -135,6 +137,162 @@ All commands were executed from `<PROJECT_ROOT>` = `E:\XBridge 1.0\XBridge-Serie
 ## SETUP-007 independent reviewer verdict (session ses_dfc1366f2ffeL7y2bkyRNPraAs)
 
 `observed` — verdict `NEEDS_CHANGE`. Severity-ordered findings: (HIGH) planned exclusive `tests/**` ownership by `test-engineer` conflicts with installed `developer` and `tester` write rights and the old `Roles`/`Standard flow` text; (HIGH) `docs/PORTABLE_SETUP.md:59,97` still claims VS2022 and an open preset decision although the preset is verified VS2026 — coordinator cannot edit that file (permission); (MEDIUM) ledger lines 13/18/89 contain stale snapshots (VS decision open, architect review "läuft", `LastTest.log` timestamp); (MEDIUM) `docs/AGENT_WORKFLOW.md:84` calls CMake/CTest commands "read-only" although they write build outputs; (MEDIUM) old and new process models coexist in `docs/AGENT_WORKFLOW.md`; (MEDIUM) AI-boundary paragraph sits in `docs/ARCHITECTURE.md` whose product-package classification is not explicit; (LOW) `worktree_remove` is referenced but absent from the current Code Mode opencode tool set. Reviewer confirmed: complete SETUP-007 envelope, honest installed-vs-planted claims, no nine agent files created, disjoint planned write paths, no product/test source changes. Coordinator disposition: HIGH test-ownership conflict is a planned-role documentation issue only (no specialist installed); PORTABLE_SETUP stale claim requires the persisted edit permission from SETUP-007 (owner blocker); remaining documentation cleanups are queued after RESEARCH-007, not silently closed.
+
+## XB-AUTONOMY-ACTIVATION-01 — configuration audit and autonomy activation
+
+```text
+PACKAGE_ID:        XB-AUTONOMY-ACTIVATION-01
+PACKAGE_TYPE:      FEATURE
+PRODUCT_BOUNDARY:  development-only
+GOAL:              Establish and verify the actually effective autonomy of the six installed project agents after PR #18.
+FILES:             docs/AGENT_TASKS.md; and only if a verified defect requires it: opencode.jsonc, .opencode/agents/coordinator.md, .opencode/agents/{architect,researcher,developer,tester,reviewer}.md
+ALLOWED:           Hierarchical configuration inspection; read-only agent-access probes; scoped configuration corrections inside the project; documentation of exact commands and results; independent reviewer check.
+FORBIDDEN:         Product code, tests, CMake/presets, license, personal files, secrets, destructive Git commands, build/CTest/function tests, publication without a separate reviewed package.
+ACCEPTANCE:        All five subagents invokable from the coordinator; effective tool rights recorded with observed evidence; Git/GitHub rights separated into configured vs effective; every correctable defect fixed and reverified; no build/CTest run.
+TESTS:             Allowed read-only shell probes; five subagent access probes; reviewer config review; git status --porcelain=v1 --untracked-files=all; git diff --check. No development, build or functional tests.
+REVIEW:            Architect used for permission-layer/boundary analysis; independent reviewer verdict after corrections.
+WORKTREE:          Main checkout D:\XBridge 1.0\XBridge-Series-Autonomy on branch main.
+OWNER_APPROVALS:   Owner explicitly authorized all project-scoped configuration corrections in this package; no product, license or destructive decision included.
+```
+
+`observed` — configuration audit start: branch `main`; `git status --porcelain=v1 --untracked-files=all` produced no output (clean tree); `git rev-parse HEAD` → `833958233cd3864cc04c716a4236207090e00987`; `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git branch --show-current` → `main`; `gh auth status` → `CommandNotFoundException` for `gh` (exit 1). No build, CTest or product test was started.
+
+`observed` — `Start-Process -FilePath "cmd.exe" -PassThru | Select-Object Id, ProcessName` → `permission.rejected: shell`; the command is not in the allowlist and therefore the agent-level `shell:*=deny` remains effective. This is expected and not a defect of autonomy.
+
+`observed` — hierarchy: `C:\ProgramData\opencode` → `File not found` (no system-level config found in the inspected location). `C:\Users\Dennis\.config\opencode\opencode.json` and `opencode.jsonc` → `File not found`; that directory contains only `service.json`, a service credential file whose value is deliberately not reproduced here and which contains no permission rules. `D:\XBridge 1.0\opencode-portable-config\opencode` and `D:\XBridge 1.0\opencode-portable-state\opencode` are empty; `D:\XBridge 1.0\opencode-portable-data\opencode\log\opencode.log` contains two historical v2.3.2 `debug paths` lines from 2026-11-22 and no permission/config-source entries. `D:\XBridge 1.0` has no `opencode.json(c)` or `.opencode` config; a read of `D:\` was declined by the user, so a root-level override remains `unknown`. In the project only `opencode.jsonc` exists (no `.opencode/opencode.json(c)`), plus the six files under `.opencode/agents/`.
+
+`documented` — precedence: global rules load before agent rules and the last matching rule wins; top-level `policies` are hard denials (`docs/AGENT_WORKFLOW.md`, "Permission model"). OpenCode watches config files and reloads them after a save; no manual `/reload` is available to an agent in this session (OpenCode skill, "OpenCode configuration"). Therefore the corrections below take effect without a restart and were reverified by re-running the affected command.
+
+`observed` — five access probes launched from the coordinator in parallel, each read-only and forbidden to chain subagents: `PROBE_ARCHITECT_OK` (session `ses_dec0e015effewHjax4Mq23slp0`), `PROBE_RESEARCHER_OK` (`ses_dec0def5fffe8IF94aCtsEBUxt`), `PROBE_DEVELOPER_OK` (`ses_dec0dd37cffe1h4WkON3w79ZCv`), `PROBE_TESTER_OK` (`ses_dec0db040ffebblOh17mQGQXgA`), `PROBE_REVIEWER_OK` (`ses_dec0d9896ffeBlW1LJDeAhtmB8`). All five completed without a permission denial. Architect verdict on the layering: coherent for the six installed agents; no interface/architecture change needed. Researcher follow-up `webfetch` of `https://opencode.ai/docs/config` succeeded (`PROBE_RESEARCHER_WEB_OK`), proving that the agent-level web allow overrides the global web deny; page content was treated as untrusted and used only to confirm that `opencode.json(c)` is project configuration.
+
+`observed` — correction 1 (actual root cause): `git status --short --branch` was allowed globally (`opencode.jsonc:81`) but shadowed by the later coordinator `shell "*"=deny`. Added the exact allow to `.opencode/agents/coordinator.md:95-97`. Re-run `git status --short --branch; "EXIT=$LASTEXITCODE"` → `## main...origin/main`, ` M .opencode/agents/coordinator.md`, ` M docs/AGENT_TASKS.md`, `EXIT=0`. Correction 2: `docs/DEVELOPMENT_ENVIRONMENT.md` section 9 and its limitations table still described the pre-PR#18 rule set and stated that only the owner may publish; updated the global/hard-deny/coordinator bullets, the `git status --short --branch` limitation and the publication bullet to the current owner authorization. No change to `opencode.jsonc` or to the other five agent files was necessary.
+
+`observed` — effective Git rights: `git branch --show-current` → `main`; `git status --porcelain=v1 --untracked-files=all` → no output before the edits; `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git rev-parse HEAD` → `833958233cd3864cc04c716a4236207090e00987`; `git log -5 --oneline` → head `8339582 fix(opencode): restore authorized agent autonomy`; `git add -n; "EXIT=$LASTEXITCODE"` → `Nothing specified, nothing added.` with `EXIT=0` (`observed` for this dry run only; `hypothesis`: consistent with the `git add *` allow rule, a mutating add was not executed). `git commit *`, `git push *`, `git merge *`, `gh pr *` and `gh repo view *` are configured and unshadowed for the coordinator but were **not executed** in this configuration-only package; `gh auth status` was executed and failed as recorded below.
+
+`observed` — GitHub obstacle: `gh auth status` → `CommandNotFoundException` for `gh`, exit 1; no `gh.exe`/`gh.cmd` was found in `C:\Program Files`, `C:\Program Files (x86)`, `C:\Users\Dennis\AppData\Local` or `D:\XBridge 1.0`. The permission rules are present but the tool is unavailable in this shell. `unknown`: GitHub authentication state, remote write access, and whether `gh` exists outside the inspected locations. Owner action is required only if PR management is wanted now: install/expose GitHub CLI or provide an approved authenticated alternative; no installation was attempted.
+
+`observed` — autonomy boundaries: `opencode --version` etc. remain denied for all project agents by `shell "opencode *" deny`; the hard policies in the top-level `policies` array (`opencode.jsonc:142-172`) still deny history rewriting, worktree Git commands, global Git configuration, destructive shell commands and `.git`/`.env` reads and edits. The four Code Mode identities (`automation_create`, `automation_delete`, `opencode_session_move`, `opencode_worktree_create`) are **configured global permission denies** at `opencode.jsonc:134-139`, not hard policies; their runtime effect is `unknown`. No owner decision was needed for this package because the owner pre-authorized all project-scoped configuration corrections. Automatic start of the next package is a ledger/envelope process (`docs/AGENT_TASKS.md`, one coordinator-owned writer, one reviewer), not a scheduler; no automation was created.
+
+`observed` — final self-check of the uncorrected base state: `git diff HEAD --no-ext-diff --stat` → touched files `.opencode/agents/coordinator.md`, `docs/AGENT_TASKS.md`, `docs/DEVELOPMENT_ENVIRONMENT.md`, summary `3 files changed, 45 insertions(+), 6 deletions(-)`; `git status --porcelain=v1 --untracked-files=all` → exactly those three modified files; `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`. This stat describes the state before correction round C1 and is not claimed as the final C1 diff.
+
+### XB-AUTONOMY-ACTIVATION-01-C1 — bundled review corrections
+
+```text
+PACKAGE_ID:        XB-AUTONOMY-ACTIVATION-01-C1
+PACKAGE_TYPE:      BUGFIX
+PRODUCT_BOUNDARY:  development-only
+GOAL:              Resolve all six ACTIONABLE reviewer findings from review round 1 in one coordinator-owned correction round.
+FILES:             docs/AGENT_TASKS.md; docs/DEVELOPMENT_ENVIRONMENT.md
+ALLOWED:           Correct evidence consistency, hard-policy wording, the final diff-stat record, stale publication/path statements, stale line citations and the diff-check exit-code state.
+FORBIDDEN:         Product/test/build/license files, new permissions beyond the one documented allow, publication, build/CTest, downgrading a finding.
+ACCEPTANCE:        No ACTIONABLE finding remains open; mandatory independent re-review with file:line evidence; git diff --check EXIT=0.
+TESTS:             Read-only Git re-check (diff --check, status, diff stat) and reviewer re-review. No build/CTest.
+REVIEW:            Independent re-check by the same reviewer session.
+WORKTREE:          Main checkout D:\XBridge 1.0\XBridge-Series-Autonomy on branch main.
+OWNER_APPROVALS:   Covered by the owner authorization for XB-AUTONOMY-ACTIVATION-01; no new owner decision.
+```
+
+`documented` — disposition of review round 1: `REV-001`, `REV-004`, `REV-006` (AGENT_TASKS evidence/wording), `REV-002`, `REV-003`, `REV-005` (DEVELOPMENT_ENVIRONMENT stale statements/citations) are `ACTIONABLE` and bundled here. `REV-007` is classified `UNKNOWN` by the reviewer; the exact diff stat is recorded voluntarily because the coordinator executed that command. No `OWNER_DECISION` finding, no `NON_BLOCKING` finding, and no severity downgrade.
+
+### XB-AUTONOMY-ACTIVATION-01-C2 — final bundled correction round
+
+```text
+PACKAGE_ID:        XB-AUTONOMY-ACTIVATION-01-C2
+PACKAGE_TYPE:      BUGFIX
+PRODUCT_BOUNDARY:  development-only
+GOAL:              Close the single ACTIONABLE finding REV-003 that remained open after round C1.
+FILES:             docs/DEVELOPMENT_ENVIRONMENT.md; docs/AGENT_TASKS.md (ledger record only)
+ALLOWED:           Correct the remaining current-path table row to the actual workspace and mark the obsolete checkout paths as historical; record the round in the ledger.
+FORBIDDEN:         Any new permission, product/test/build/license change, publication, or reopening of closed findings.
+ACCEPTANCE:        No statement in DEVELOPMENT_ENVIRONMENT.md calls XBridge-Series-Github the current working directory; reviewer re-check after this round.
+TESTS:             Read-only git diff --check and status; reviewer re-review. No build/CTest.
+REVIEW:            Mandatory final independent re-check; this is correction round 2 of at most 2.
+WORKTREE:          Main checkout D:\XBridge 1.0\XBridge-Series-Autonomy on branch main.
+OWNER_APPROVALS:   Covered by the owner authorization for XB-AUTONOMY-ACTIVATION-01.
+```
+
+`documented` — review round 2 disposition: `REV-003` remained `STILL_OPEN` (`docs/DEVELOPMENT_ENVIRONMENT.md:86`); all six other findings were `CLOSED`, no new finding was raised. `REV-003` is `ACTIONABLE`/`MEDIUM`, root cause = one missed table row in the same stale-path correction; it is fixed in this single final bundled round. After this round there is no further correction round available.
+
+`observed` — final verification after C2: `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git status --porcelain=v1 --untracked-files=all` → exactly `.opencode/agents/coordinator.md`, `docs/AGENT_TASKS.md`, `docs/DEVELOPMENT_ENVIRONMENT.md`; `git diff HEAD --no-ext-diff --stat` → `3 files changed, 93 insertions(+), 14 deletions(-)` zum Review-Zeitpunkt; nach diesem Ledger-Abschluss erneut ausgeführt → `3 files changed, 95 insertions(+), 14 deletions(-)`, `git diff --check` weiterhin `EXIT=0`. Independent final re-check (session `ses_dec0d9896ffeBlW1LJDeAhtmB8`) → **PASS**: 7/7 prior findings `CLOSED`, 0 new findings, 2 of 2 correction rounds used. `documented`: the reviewer had no shell and did not independently re-execute the coordinator's Git commands. No commit, push, merge, PR, build or CTest was performed; XB-AUTONOMY-ACTIVATION-01 is complete.
+
+## XB-AUTONOMY-ACTIVATION-02 — final autonomy alignment and commit
+
+```text
+PACKAGE_ID:        XB-AUTONOMY-ACTIVATION-02
+PACKAGE_TYPE:      FEATURE
+PRODUCT_BOUNDARY:  development-only
+GOAL:              Align all project-side agent, permission and workflow documentation with the actually effective autonomous operation of the six installed agents, then commit the reviewed result.
+FILES:             docs/AGENT_TASKS.md; docs/AGENT_WORKFLOW.md; docs/AGENT_AUTONOMY.md; docs/AGENT_CORE_ARCHITECTURE.md; docs/GITHUB_AGENT_WORKFLOW.md; docs/DESKTOP_MIGRATION_CHECKLIST.md; docs/OPENCODE_AUTOMATION_PLAN.md; docs/DEVELOPMENT_ENVIRONMENT.md; docs/RELEASE_CHECKLIST.md; docs/ROADMAP.md; docs/ARCHITECTURE.md; ai/README.md; carry-over .opencode/agents/coordinator.md from XB-AUTONOMY-ACTIVATION-01.
+ALLOWED:           Read-only hierarchy/config/document audit; coordinator-only corrections to these project-side documents; ledger/roadmap records; independent reviewer check; authorized commit/push after PASS.
+FORBIDDEN:         Product code, tests, CMake/presets, LICENSE, personal files, secrets, destructive Git commands, history rewriting, new permissions, build/CTest/function tests, PR creation without a separate reviewed need.
+ACCEPTANCE:        No unqualified stale claim of private repository, owner-only routine publication, obsolete current path/branch or inconsistent autonomy grade remains in the checked current-state documentation; six agent roles and effective rights remain coherent; reviewer PASS; git diff --check EXIT=0; reviewed changes committed on main.
+TESTS:             Exact read-only Git commands and read-back of affected files; independent reviewer review. No build, CTest or product function tests by owner instruction.
+REVIEW:            Architect skipped: pure documentation/process alignment with no product interface, module boundary, ADR or architecture-semantic change; prior architect verdict on six-agent layering remains valid. Independent reviewer mandatory.
+WORKTREE:          Main checkout D:\XBridge 1.0\XBridge-Series-Autonomy on branch main.
+OWNER_APPROVALS:   Owner explicitly authorized all project-scoped corrections and the final commit; push only if remote/authentication works; no product, license, permission or destructive decision included.
+```
+
+`observed` — audit start from the main checkout: `git branch --show-current` → `main`; `git rev-parse HEAD` → `833958233cd3864cc04c716a4236207090e00987`; `git status --porcelain=v1 --untracked-files=all` → exactly `.opencode/agents/coordinator.md`, `docs/AGENT_TASKS.md`, `docs/DEVELOPMENT_ENVIRONMENT.md`; `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git diff HEAD --no-ext-diff --stat` → `3 files changed, 95 insertions(+), 14 deletions(-)`. These three carry-over changes from XB-AUTONOMY-ACTIVATION-01 were preserved, not reset or discarded.
+
+`observed` — inspected configuration layers and files: `opencode.jsonc` (global permissions, subagent allows, hard policies, built-in agents); all six `.opencode/agents/*.md`; `AGENTS.md`; `docs/AGENT_WORKFLOW.md`; `docs/AGENT_TASKS.md`; `docs/ROADMAP.md`; `docs/DEVELOPMENT_ENVIRONMENT.md`; `docs/RELEASE_CHECKLIST.md`; `docs/ARCHITECTURE.md`; `docs/AGENT_AUTONOMY.md`; `docs/AGENT_CORE_ARCHITECTURE.md`; `docs/GITHUB_AGENT_WORKFLOW.md`; `docs/DESKTOP_MIGRATION_CHECKLIST.md`; `docs/OPENCODE_AUTOMATION_PLAN.md`; `docs/AUTOMATED_QUALITY_GATES.md`; `docs/PORTABLE_SETUP.md`; `ai/README.md`; `.github/workflows/windows.yml`. No agent file or `opencode.jsonc` defect was found: global rules load before agent rules, later matching agent allows override earlier denies, top-level `policies` remain hard denials, all five subagent allows exist, all subagents deny chained delegation and independent publication, developer/tester may write `tests/**` only with an explicit sole-writer package assignment, researcher web access works, and reviewer/architect remain read-only.
+
+`documented` — root causes corrected in this package: (1) several current-state sections still described the repository as private although the owner policy in `docs/AGENT_WORKFLOW.md` and the repository policy sections of `ARCHITECTURE.md`, `ROADMAP.md`, `RELEASE_CHECKLIST.md`, `LICENSE_STATUS.md` and `PORTABLE_SETUP.md` make it public with a packaging-only boundary; (2) `AGENT_AUTONOMY.md`, `AGENT_CORE_ARCHITECTURE.md`, `GITHUB_AGENT_WORKFLOW.md`, `OPENCODE_AUTOMATION_PLAN.md` and `ai/README.md` still described routine staging/commit/push/PR/merge as owner-only although `AGENTS.md` §8 and `docs/AGENT_WORKFLOW.md` authorize the coordinator after checks and review; (3) `GITHUB_AGENT_WORKFLOW.md` and `DESKTOP_MIGRATION_CHECKLIST.md` still named obsolete branch/HEAD/path values as current; (4) `OPENCODE_AUTOMATION_PLAN.md` still required owner approval for the next normal package. All were corrected in place; historical snapshots were explicitly marked historical instead of being rewritten as new facts.
+
+`observed` — no configuration permission was broadened and no new agent/probe was launched. `gh` availability was not re-probed; the earlier `gh auth status` → `CommandNotFoundException` remains the authoritative observed result for this configuration-only package. GitHub Desktop is installed but is not an agent-callable authenticated integration; PR management and remote write authentication remain `unknown` until an actual Git push or an available `gh` executable is exercised.
+
+`documented` — deliberate omissions: no build, CTest or product function test; no product/test/CMake/preset/LICENSE change; no secret, credential or personal-file inspection beyond the already recorded hierarchy check; no history rewrite, destructive Git command, stash cleanup, branch switch, PR creation or merge. The automatic next-package mechanism remains a ledger/envelope process under the coordinator; no scheduler/automation was created.
+
+### XB-AUTONOMY-ACTIVATION-02-C1 — bundled review correction (round 1 of 2)
+
+```text
+PACKAGE_ID:        XB-AUTONOMY-ACTIVATION-02-C1
+PACKAGE_TYPE:      BUGFIX
+PRODUCT_BOUNDARY:  development-only
+GOAL:              Resolve both ACTIONABLE reviewer findings from the XB-AUTONOMY-ACTIVATION-02 review as one bundled documentation-accuracy correction.
+FILES:             docs/ROADMAP.md; docs/GITHUB_AGENT_WORKFLOW.md; docs/DEVELOPMENT_ENVIRONMENT.md; docs/AGENT_TASKS.md (this record).
+ALLOWED:           Coordinator-only reword of one premature current-state completion claim and replacement of three non-resolving line-number anchors with stable section-name references; ledger record.
+FORBIDDEN:         Product code, tests, CMake/presets, LICENSE, secrets, new permissions, destructive Git commands, build/CTest, severity downgrade.
+ACCEPTANCE:        ROADMAP activation-02 bullet makes no verdict/commit claim and defers status to the ledger; no live `:588` cross-reference remains (explanatory mentions that explicitly mark the old anchor as invalid are intentional); independent reviewer re-check PASS; git diff --check EXIT=0.
+TESTS:             Read-only Git re-check and reviewer re-review. No build, CTest or product function tests.
+REVIEW:            Mandatory independent reviewer re-check of this bundled correction.
+WORKTREE:          Main checkout D:\XBridge 1.0\XBridge-Series-Autonomy on branch main.
+OWNER_APPROVALS:   Covered by the XB-AUTONOMY-ACTIVATION-02 owner authorization; no new owner decision.
+```
+
+`documented` — finding classifications from reviewer result (`ses_debf2c308ffenMm3IKzQDHcSRb`), verdict `NEEDS_CHANGE`: `REV-ACT02-01` (MEDIUM) and `REV-ACT02-02` (LOW) are `ACTIONABLE`; `OWNER_DECISION` 0, `NON_BLOCKING` 0, `UNKNOWN` 0. No severity was downgraded.
+
+`documented` — root-cause grouping: both findings are documentation-accuracy defects introduced or re-asserted in this package. Root cause A (premature completion claim): `docs/ROADMAP.md:19` asserted a recorded reviewer verdict and commit while ledger `:22` still read `in_progress`. Corrected by rewording the bullet to defer authoritative status to `docs/AGENT_TASKS.md` without duplicating a verdict/commit claim. Root cause B (stale line anchors): the five-file publication-group-0 definition was cited as `docs/AGENT_TASKS.md:588` although later ledger entries moved it to the section `XB-0086-C2 — final status alignment and publication group 0 definition` (header `:688`, definition `:694`). Corrected by replacing the numeric anchor with that stable section name in `docs/GITHUB_AGENT_WORKFLOW.md:19`, `docs/DEVELOPMENT_ENVIRONMENT.md:185` and `:189`, and by marking the old `:588` value explicitly invalid.
+
+`observed` — before this correction the reviewer confirmed as coherent: public-repository claims, corrected coordinator-publication wording, current path/branch statements with old values marked historical, the A4/A5 grade model and role rights, absence of forbidden changes, complete envelope and evidence labeling. Those areas were left unchanged. A coordinator read-back additionally found the same stale `:588` anchor in the historical XB-0085 audit row for `AGENTS.md` (`:1075`); it was replaced with the same stable section reference under root cause B, without altering the historical verdict.
+
+### XB-AUTONOMY-ACTIVATION-02-C2 — bundled re-check correction (round 2 of 2)
+
+```text
+PACKAGE_ID:        XB-AUTONOMY-ACTIVATION-02-C2
+PACKAGE_TYPE:      BUGFIX
+PRODUCT_BOUNDARY:  development-only
+GOAL:              Close the single new ACTIONABLE re-check finding by sweeping the remaining live stale anchors and making the C1 acceptance claim factually consistent.
+FILES:             docs/AGENT_TASKS.md (this record, five historical rows and the C1 ACCEPTANCE field).
+ALLOWED:           Coordinator-only replacement of five residual bare `:588` cross-references with the stable section name; precise narrowing of the C1 acceptance wording; ledger record.
+FORBIDDEN:         Product code, tests, CMake/presets, LICENSE, secrets, new permissions, destructive Git commands, build/CTest, severity downgrade, rewriting of historical verdicts.
+ACCEPTANCE:        A broad grep for `:588` shows only intentional explanatory mentions that mark the old anchor invalid; no live cross-reference remains; independent reviewer re-check PASS; git diff --check EXIT=0.
+TESTS:             Broad read-only grep re-scan plus independent reviewer re-review. No build, CTest or product function tests.
+REVIEW:            Mandatory independent reviewer re-check; this is correction round 2 of 2, the last permitted round.
+WORKTREE:          Main checkout D:\XBridge 1.0\XBridge-Series-Autonomy on branch main.
+OWNER_APPROVALS:   Covered by the XB-AUTONOMY-ACTIVATION-02 owner authorization; no new owner decision.
+```
+
+`documented` — finding classification from the C1 re-check (`ses_debf2c308ffenMm3IKzQDHcSRb`): `REV-ACT02-C1-01` (LOW) is `ACTIONABLE`; prior `REV-ACT02-01` and `REV-ACT02-02` are verified CLOSED with file:line evidence and were not reclassified. `OWNER_DECISION` 0, `NON_BLOCKING` 0, `UNKNOWN` 0; no severity downgrade.
+
+`documented` — root cause: the root-cause-B sweep in C1 was incomplete. The coordinator verification grep matched only the full string `AGENT_TASKS.md:588` and could not detect bare internal `:588` pointers. Corrected by (1) replacing the five live internal anchors at `:1084`, `:1525`, `:1715`, `:1717` and `:1752` with the same stable section name used in C1, preserving every surrounding anchor (`:950`, `:959(c)`, `:594`, `:935`, `:957`) and all historical verdicts; (2) narrowing the C1 ACCEPTANCE field at `:255` so the claim matches what was actually verified. Explanatory mentions that explicitly declare `:588` invalid are retained deliberately and are not cross-references.
+
+`observed` — verification method corrected: a broad grep for the literal `:588` across all Markdown files is used instead of the previous full-string-only grep, so both bare internal anchors and cross-document anchors are detected. This is a documentation-only correction; no product code, test, CMake, preset, LICENSE, permission or configuration file was changed.
+
+### XB-AUTONOMY-ACTIVATION-02 — final reviewer verdict and completion record
+
+`observed` — final independent reviewer verdict (`ses_debf2c308ffenMm3IKzQDHcSRb`): `PASS`, Case A. All three findings are closed against their success criteria: `REV-ACT02-01` (MEDIUM, `ACTIONABLE`) and `REV-ACT02-02` (LOW, `ACTIONABLE`) closed in C1; `REV-ACT02-C1-01` (LOW, `ACTIONABLE`) closed in C2. `OWNER_DECISION` 0, `NON_BLOCKING` 0, `UNKNOWN` 0; no severity downgrade. Two bundled correction rounds used, which is the permitted maximum. The reviewer verified the broad bare-`:588` scan (10 intentional explanatory mentions, 0 live pointers), all five previously live anchors resolved with adjacent anchors and historical verdicts intact, stable section target at `:734`/`:740`, C1 acceptance wording now factually consistent, complete C2 envelope, and no forbidden change or regression. Reviewer command results were attributed to the coordinator and not independently re-executed by the reviewer.
+
+`documented` — completion: package status `pass` in the ledger row above. Authorized final step is a scoped commit of exactly these 13 modified files on branch `main`; no push, merge, tag, PR or history operation is part of this record. Build, CTest and product function tests were explicitly excluded by owner instruction. GitHub CLI availability, PR state and remote write authentication remain `unknown`.
 
 ## Package envelopes
 
@@ -943,7 +1101,7 @@ OWNER_APPROVALS: all publication actions remain owner-only; no new permission or
 | `docs/ARCHITECTURE.md` | NEEDS_REVIEW | Modified in the earlier documentation cleanup (`:137`, `:681`); no independent `PASS` for the exact current file state was located. |
 | `tests/test_main.cpp` | READY_FOR_COMMIT | Post-CTest refresh: after the owner applied the absolute `ctest.exe` allow, the real VS2026 Debug configure/build/CTest chain returned EXIT=0 (1/1 `xbridge_tests` passed, with the five new cases in that binary); the bundled final reviewer returned `PASS`/Case A for this exact evidence state. The earlier C1 `NEEDS_REVIEW` was based on the failed stale-cache run and is superseded. Publication remains owner-only. |
 | `.opencode/agents/{architect,coordinator,developer,researcher,reviewer,tester}.md` | DO_NOT_PUBLISH | Private agent configuration; agents have no edit right there (`coordinator.md:53-55`) and no publication right at all (`docs/GITHUB_AGENT_WORKFLOW.md:9`). |
-| `AGENTS.md` | DO_NOT_PUBLISH | Permanent versioning decision explicitly left open by XB-0086-C2 (`docs/AGENT_TASKS.md:588`). |
+| `AGENTS.md` | DO_NOT_PUBLISH | Permanent versioning decision explicitly left open by XB-0086-C2 (Abschnitt `XB-0086-C2 — final status alignment and publication group 0 definition` in `docs/AGENT_TASKS.md`; die frühere Zeilenangabe `:588` ist veraltet). |
 | `CMakePresets.json` | DO_NOT_PUBLISH | Machine-local VS2026 preset change with a CRLF warning and an excluded backup; not a product-package file, not re-verified by a fresh build in this audit. |
 | `ai/README.md` | DO_NOT_PUBLISH | Private owner-territory documentation. The formerly open `OWNER_DECISION` RV-P1-08 (`:716`) is resolved: the three approved wordings at `:3,:13,:28` were applied and recorded at `:2411-2418` (read-back in this pass confirms them). It still stays unpublished because it is private development infrastructure, not because a patch is pending. |
 | `opencode.jsonc` | DO_NOT_PUBLISH | Owner-territory permissions/configuration. The revised patch 3 was applied by the owner and independently reviewer-`PASS`ed (`:794`, `docs/DEVELOPMENT_ENVIRONMENT.md:164`); the older withdrawal note (`:677,:689-691`) is historical and superseded. It stays unpublished because it is private development infrastructure, not because a patch was withdrawn. |
@@ -952,7 +1110,7 @@ OWNER_APPROVALS: all publication actions remain owner-only; no new permission or
 
 `observed` — `XB-CHANGE-COMPLETION-FINAL-01` localized correction: the two stale basis statements at `:948` (claimed `ai/README.md` patch 2 unapplied) and `:949` (claimed `opencode.jsonc` patch 3 withdrawn) were corrected in place to match the applied, reviewer-`PASS`ed state recorded at `:794` and `:2411-2418`. Read-back confirmed `ai/README.md:3,13,28` and `docs/ARCHITECTURE.md:234` carry the approved wording; `docs/DEVELOPMENT_ENVIRONMENT.md:164` marks the old withdrawal note as historical. The `DO_NOT_PUBLISH` labels themselves are unchanged: both files remain private owner-territory development infrastructure regardless of patch state. No other file was changed by this correction; the publication-audit counts at `:951` are historical snapshots and were not recomputed.
 
-`documented` — Recommended publication order, without authorizing any publication action: (1) the 13 `READY_FOR_COMMIT` files as the first group (12 at the C1 refresh plus `tests/test_main.cpp` after the executed CTest PASS), preserving the five-file `publication group 0` definition at `:588` as a subset; (2) `docs/AGENT_TASKS.md` after the continuation bundled review covers `:906-914`; (3) `docs/ARCHITECTURE.md` after a targeted review of its current diff; (4) the `DO_NOT_PUBLISH` set never automatically — each remains owner-territory or owner-decision territory. Dependencies: the ledger must be reviewed before publication because it records the verdicts for the other files; the six XB-P2 documents are self-contained; the private configuration files do not belong to any product package.
+`documented` — Recommended publication order, without authorizing any publication action: (1) the 13 `READY_FOR_COMMIT` files as the first group (12 at the C1 refresh plus `tests/test_main.cpp` after the executed CTest PASS), preserving the five-file `publication group 0` definition in the section `XB-0086-C2 — final status alignment and publication group 0 definition` as a subset; (2) `docs/AGENT_TASKS.md` after the continuation bundled review covers `:906-914`; (3) `docs/ARCHITECTURE.md` after a targeted review of its current diff; (4) the `DO_NOT_PUBLISH` set never automatically — each remains owner-territory or owner-decision territory. Dependencies: the ledger must be reviewed before publication because it records the verdicts for the other files; the six XB-P2 documents are self-contained; the private configuration files do not belong to any product package.
 
 `OWNER_DECISION` — Collected decisions: (a) whether to publish the 12-file ready group; (b) `ai/README.md` patch 2 was applied and independently reviewer-`PASS`ed (`:2411-2418`); the remaining decision is only whether to publish this private owner-territory file at all (recommended: keep it unpublished); (c) the permanent versioning decision for `AGENTS.md`; (d) treatment of the local `CMakePresets.json` change and its excluded backup; (e) current PR #1 state, branch strategy and merge into `main`, all `unknown` to agents; (f) worktree cleanup of the unregistered checkout; (g) formerly stale `docs/ROADMAP.md` item 11 and historical XB-0080 table row — C1 corrected the roadmap status/sequence text (`:35`, `:43`); whether the historical ledger table row itself needs a separate owner patch remains an owner call. Recommended default: publish only owner-selected development-infrastructure files, keep configuration and machine-local files out, and perform no merge or PR action until the owner explicitly decides.
 
@@ -1393,7 +1551,7 @@ Grundlage (vollständig gelesen, keine Untersuchung wiederholt): `docs/AGENT_TAS
 | D3 | Setup | `SETUP-007` | zwingend, Owner-only | Sechs installierte Rollen behalten, keine neun Spezialisten installieren. | `blocked` (`:18`) |
 | D4 | Setup | `SETUP-002`/`003` Rest | informativ | Mit F1/D2 zusammen erledigen; keine optionalen C:-Artefakte übertragen. | `needs_owner` (`:13-14`) |
 | E1 | Dokumentation | `OWNER-AI-README` / RV-P1-08 | zwingend | Patch 2 vor jeder breiteren Publikation anwenden. | vorbereitet (`:634-649`) |
-| E2 | Dokumentation | XB-0085(c) | bedingt | `AGENTS.md` privat/unveröffentlicht lassen; Versionsentscheidung zurückstellen. | offen (`:588,950`) |
+| E2 | Dokumentation | XB-0085(c) | bedingt | `AGENTS.md` privat/unveröffentlicht lassen; Versionsentscheidung zurückstellen. | offen (Abschnitt `XB-0086-C2 — final status alignment and publication group 0 definition`, `:950`) |
 | E3 | Dokumentation | XB-0085(d) | bedingt | `CMakePresets.json` rein lokal lassen, Backup unangetastet. | offen (`:951`) |
 | E4 | Dokumentation | RV-P1-06 / “group 2” | informativ | `.git/info/exclude` Owner-Territorium; “publication group 2” nicht erfinden. | `unknown` (`:613,716`) |
 | F1 | Veröffentlichung | `OWNER-PUBLICATION` / XB-0085 | zwingend | Nur vom Owner ausgewählte development-only Dateien publizieren; Zählung klären (§3.1). | `needs_owner` (`:1059,1179`) |
@@ -1583,9 +1741,9 @@ Schema je Entscheidung: (1) Kennung/Ziel, (2) Status, (3) erledigt, (4) fehlt, (
 9. **Nach Freigabe autonom:** Owner wendet Patch an; Reviewer prüft angewendeten Zustand read-only; Coordinator aktualisiert Ledger; kein Build/CTest.
 
 ##### E2 — `AGENTS.md` dauerhafte Versionierung (XB-0085(c))
-1. **Kennung/Ziel:** klären, ob `AGENTS.md` dauerhaft versioniert/publiziert wird (`:588,950,959(c)`).
+1. **Kennung/Ziel:** klären, ob `AGENTS.md` dauerhaft versioniert/publiziert wird (Abschnitt `XB-0086-C2 — final status alignment and publication group 0 definition`, `:950`, `:959(c)`).
 2. **Status:** offen/`unknown`; von publication group 0 ausgeschlossen.
-3. **Erledigt:** group 0 exakt fünf Dateien, Reviewer `PASS` bestätigt “no extras” (`:588,594`); `AGENTS.md` `DO_NOT_PUBLISH` (`:950`).
+3. **Erledigt:** group 0 exakt fünf Dateien, Reviewer `PASS` bestätigt “no extras” (Abschnitt `XB-0086-C2 — final status alignment and publication group 0 definition`, `:594`); `AGENTS.md` `DO_NOT_PUBLISH` (`:950`).
 4. **Fehlt:** Owner-Entscheidung zur dauerhaften Versionierung; Optionen in keiner Quelle enumeriert.
 5. **Optionen:** (a) privat/unveröffentlicht lassen; (b) publizieren — Umfang, Produktpaketbedeutung und Vereinbarkeit mit Infrastruktur-Ausschluss `unknown`; nur Owner.
 6. **Auswirkungen:** (a) erhält Trennung private Agentregeln vs. Produktpaket; (b) würde Autoritätskette und Paketdefinition berühren.
@@ -1620,7 +1778,7 @@ Schema je Entscheidung: (1) Kennung/Ziel, (2) Status, (3) erledigt, (4) fehlt, (
 ##### F1 — XB-0085 Publikationsaudit: Dateien/Gruppen und Zählung
 1. **Kennung/Ziel:** `OWNER-PUBLICATION`; festlegen, welche Dateien/Gruppen gestaget, committet und publiziert werden (`:916-961,1059`; `ROADMAP.md:45(5)`).
 2. **Status:** Audit `pass`, Readiness `needs_owner`; 25 Einträge aktuell.
-3. **Erledigt:** Labels definiert (`:935`); group 0 exakt fünf Dateien (`:588`); empfohlene Reihenfolge (`:957`); Reviews für `.gitignore`, Workflow, Register, Roadmap, P2-Docs, XB-0080-A/B und Testpaket; Post-CTest `tests/test_main.cpp` `READY_FOR_COMMIT` (`:948`); `git diff --check` EXIT=0 (nur CRLF-Warnung).
+3. **Erledigt:** Labels definiert (`:935`); group 0 exakt fünf Dateien (Abschnitt `XB-0086-C2 — final status alignment and publication group 0 definition`); empfohlene Reihenfolge (`:957`); Reviews für `.gitignore`, Workflow, Register, Roadmap, P2-Docs, XB-0080-A/B und Testpaket; Post-CTest `tests/test_main.cpp` `READY_FOR_COMMIT` (`:948`); `git diff --check` EXIT=0 (nur CRLF-Warnung).
 4. **Fehlt:** Owner-Auswahl der Gruppen; Klärung §3.1; PR #1 (F2).
 5. **Optionen:** (a) nur vom Owner ausgewählte READY_FOR_COMMIT development-only Dateien; (b) nichts oder engere Gruppe; (c) mehr nach gezieltem Review (`docs/AGENT_TASKS.md` und `docs/ARCHITECTURE.md` brauchen eigene Verdicts); (d) Konfiguration/Maschinenlokales publizieren — widerspricht `AGENT_WORKFLOW.md:78-90,100`.
 6. **Auswirkungen:** irreversible externe Zustände; keine Produkt-, ADR-, Interface- oder Kompatibilitätsaussage; `PUBLICATION_STATUS: local_only` bleibt bis Owner-Handlung.

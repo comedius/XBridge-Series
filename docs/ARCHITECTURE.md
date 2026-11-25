@@ -71,7 +71,7 @@ Dependencies should point inward through interfaces. CPU and GPU modules may dep
 
 ### Product vs development infrastructure boundary
 
-OpenCode configuration, specialized agents, prompts, internal automation, workflow documents and temporary development artifacts are development infrastructure. They stay in the private development repository and are excluded from the product package, which is defined later by an explicit allowlist. Product code must not depend on AI services or agent control unless a separate ADR and owner approval define that behavior as a product function. The final cleanup is a late-stage, owner-approved package; it must not remove the development infrastructure needed for post-release maintenance.
+OpenCode configuration, specialized agents, prompts, internal automation, workflow documents and temporary development artifacts are development infrastructure. They stay in the public development repository and are excluded from a future product package, which is defined later by an explicit allowlist. Product code must not depend on AI services or agent control unless a separate ADR and owner approval define that behavior as a product function. The final cleanup is a late-stage, owner-approved package; it must not remove the development infrastructure needed for post-release maintenance.
 
 ## CPU strategy
 

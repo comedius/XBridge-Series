@@ -11,13 +11,16 @@ This roadmap describes development phases. It is development documentation and i
 
 ## Phase 2 — Agent-assisted development
 
-- Private development repository with the coordinator and five subagents (installed and validated).
+- Public development repository with the coordinator and five subagents (installed and validated).
 - Package-based workflow defined in `docs/AGENT_WORKFLOW.md`.
 - Strict separation of product code and development infrastructure.
 - The coordinator may publish completed, independently reviewed project changes after required checks pass; subagents never publish independently.
 - **Planned expansion (not installed):** nine additional specialists — `cpu-developer`, `memory-developer`, `gpu-developer`, `audio-developer`, `input-developer`, `platform-developer`, `test-engineer`, `performance-engineer`, `integration-engineer`. Their ownership and the autonomous cycle are specified in `docs/AGENT_WORKFLOW.md`. Installation requires a scoped owner permission for `.opencode/agents/**`; until then the coordinator uses the five existing subagents and never reports the new roles as active.
+- `XB-AUTONOMY-ACTIVATION-02` — project-side alignment of role, permission and publication documentation; coordinator is the sole writer. The package envelope, evidence and the authoritative current status are recorded in `docs/AGENT_TASKS.md`; this line deliberately does not duplicate a verdict or commit claim. No product/test/build/CTest change.
 
 ### Current milestone queue (development infrastructure)
+
+`documented` (`XB-AUTONOMY-ACTIVATION-02`) — Publication-status wording in the numbered items below (for example "publication owner-only" or "publication remains an owner decision") is a **historical per-package record** of how those specific completed packages were handled and why they were not published. It is not a statement of current policy. Current routine staging, commit, push, merge and PR of independently reviewed work are performed by the coordinator under `AGENTS.md` §8 and `docs/AGENT_WORKFLOW.md` after checks and review; only tag, release, strategic branch decisions and history rewriting remain owner decisions. `docs/AGENT_AUTONOMY.md` defines the corresponding A4/A5 grades.
 
 1. `SETUP-004` — 13-session portability transfer (owner-only, still open).
 2. `SETUP-005` — VS2026 generator: **verified pass** with absolute CMake/CTest paths.

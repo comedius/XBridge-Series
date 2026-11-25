@@ -1,6 +1,6 @@
 # AI development workflow
 
-Agents work in the owner-provided checkout; branch changes and worktrees require owner action.
+Agents work in the owner-provided checkout; Git-Shell branch changes and worktree commands remain hard-denied. The coordinator publishes only independently reviewed work through the configured Git/GitHub rules.
 
 ## Required workflow
 
@@ -10,7 +10,7 @@ Agents work in the owner-provided checkout; branch changes and worktrees require
 4. Add or update tests.
 5. Run CMake build and CTest.
 6. Report commands, results, limitations, and unresolved questions.
-7. Hand the result to the project owner; the owner performs all Git/GitHub publication actions.
+7. Hand the result to the coordinator; the coordinator publishes only reviewed work through the configured Git/GitHub rules. Subagents never publish.
 
 ## Global guardrails
 
@@ -23,6 +23,6 @@ Agents work in the owner-provided checkout; branch changes and worktrees require
 
 ## Development infrastructure boundary
 
-The agent system, its prompts, OpenCode configuration, workflow documents and internal automation are development artifacts. They remain in the private development repository and are excluded from the product package. See `docs/AGENT_WORKFLOW.md` and `docs/RELEASE_CHECKLIST.md` for the package envelope and the final cleanup gate.
+The agent system, its prompts, OpenCode configuration, workflow documents and internal automation are development artifacts. They remain in the public development repository and are excluded from a future product package by an explicit allowlist. See `docs/AGENT_WORKFLOW.md` and `docs/RELEASE_CHECKLIST.md` for the package envelope and the final cleanup gate.
 
-Step 7 is explicit: agents hand off; the project owner alone may open a pull request or perform any other Git/GitHub publication action.
+Step 7 is explicit: subagents hand off to the coordinator; only the coordinator may open a pull request or perform Git/GitHub publication actions within the configured rules.

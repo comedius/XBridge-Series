@@ -23,7 +23,7 @@ Stand: 2026-11-24. Freigegeben als Teil von `XB-P2`. Evidenzlabels: `documented`
 | Delegation | `coordinator` → installierte Subagenten | `observed` |
 | Prüfung | erlaubte Git-/CMake-/CTest-Kommandos, Reviewer | `observed` |
 | Persistenz | Ledger, Roadmap, Working Tree | `observed` |
-| Publikation | ausschließlich Owner | `documented` |
+| Publikation | Coordinator nach Review, konfigurierte Git/GitHub-Regeln | `documented` |
 
 `observed` — Global gilt `shell "*" ask` mit expliziten Allow-Ausnahmen; `question`/`subagent`/`webfetch`/`websearch` sind global `deny`, werden aber für einzelne Rollen durch spätere Agent-Regeln aufgehoben („letzte passende Regel gewinnt"). Harte `policies` sind nicht durch Regeln aufhebbar. Shell-Pattern sind keine OS-Sandbox.
 
@@ -35,7 +35,7 @@ Stand: 2026-11-24. Freigegeben als Teil von `XB-P2`. Evidenzlabels: `documented`
 
 `documented` — Ablauf pro Paket:
 
-1. Owner-Freigabe mit Envelope; echte Blocker vorab klären.
+1. Vollständiger Envelope aus bestehender Freigabe oder Coordinator-Planung; echte Owner-Blocker vorab klären.
 2. Einmalige kompakte Vorbereitung: Zustand, Abhängigkeiten, vorhandene Dokumentation, Rechte. Bekanntes wiederverwenden.
 3. Vollständige Aufgaben-/Dateizuordnung; genau ein Writer pro Pfad.
 4. Direkte Umsetzung im freigegebenen Writersatz; keine Zwischenberichte.
@@ -45,7 +45,7 @@ Stand: 2026-11-24. Freigegeben als Teil von `XB-P2`. Evidenzlabels: `documented`
 8. Findings klassifizieren: `ACTIONABLE`, `OWNER_DECISION`, `NON_BLOCKING`, `UNKNOWN`.
 9. Case A (kein `ACTIONABLE`): Verdict behalten, kein zweites Review. Case B: ein gebündeltes Korrekturpaket pro Writer, dann gezielte Nachprüfung.
 10. Kompakter Abschlussbericht mit Ergebnissen, Risiken, Owner-Entscheidungen und nächster Empfehlung.
-11. Owner führt Publikation und nächste Freigabe aus.
+11. Coordinator veröffentlicht den geprüften Stand und startet das nächste zulässige Paket ohne Rückfrage, solange keine Owner-Entscheidung offen ist.
 
 `documented` — Maximal zwei gebündelte Korrekturrunden; danach `BLOCKED` mit Eskalation. Kein vollständiger Review-Zyklus für unveränderte, bereits bestandene Bereiche.
 
@@ -96,7 +96,7 @@ Stand: 2026-11-24. Freigegeben als Teil von `XB-P2`. Evidenzlabels: `documented`
 
 `planned` — Weitere Adapter (Codex, Claude Code, GitHub Copilot) sind architektonisch berücksichtigbar, aber nicht installiert, nicht konfiguriert und nicht geprüft. Ein Adapterwechsel oder eine neue Automatisierungsstufe benötigt eine eigene Owner-Entscheidung, eigene Rechteprüfung und eigene Verifikation. Es gibt keine Annahme über Fähigkeiten, Modelle oder Verfügbarkeit dieser Plattformen.
 
-`documented` — Nicht automatisierbar durch Agents: `opencode session export/import`, Änderungen an `.opencode/**`/`opencode.jsonc`, Installation und Rechteänderungen. Diese Aufgaben werden gebündelt an den Owner gegeben. Interaktive TUI-`ask`-Dialoge bleiben `unknown`.
+`documented` — Owner-operiert: `opencode session export/import`, Installation neuer Rollen und Rechteänderungen außerhalb der bestehenden Projektfreigabe. Vom Coordinator im Projekt erfassbar: `.opencode/**`/`opencode.jsonc`-Korrekturen unter `AGENTS.md` §11 und wirksamen Regeln. Interaktive TUI-`ask`-Dialoge bleiben `unknown`.
 
 ## 9. Bekannte Einschränkungen
 

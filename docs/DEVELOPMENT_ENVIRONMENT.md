@@ -1,6 +1,6 @@
 # XBridge Series – Entwicklungsumgebung
 
-Diese Datei gehört zur **Entwicklungsinfrastruktur** und ist **nicht Teil des Produktpakets** (`AGENTS.md` §10/§11). Sie beschreibt den technischen Ist-Zustand der Entwicklungsumgebung als Referenz für weitere Entwicklungsaufgaben. `owner-provided`: Der hier beschriebene Desktop-PC mit dem Pfad `D:\XBridge 1.0\XBridge-Series-Github` ist die aktive Entwicklungsumgebung. Ein weiterer, noch nicht geprüfter Rechner ist ein separates zukünftiges Migrationsziel (`planned`/`unknown`); es werden keine Annahmen über ihn getroffen.
+Diese Datei gehört zur **Entwicklungsinfrastruktur** und ist **nicht Teil des Produktpakets** (`AGENTS.md` §10/§11). Sie beschreibt den technischen Ist-Zustand der Entwicklungsumgebung als Referenz für weitere Entwicklungsaufgaben. `observed`: Der aktive Workspace ist `D:\XBridge 1.0\XBridge-Series-Autonomy`. `owner-provided`: Der hier beschriebene Desktop-PC ist die aktive Entwicklungsumgebung; der frühere Pfad `D:\XBridge 1.0\XBridge-Series-Github` ist **historisch** und nicht mehr aktuell. Ein weiterer, noch nicht geprüfter Rechner ist ein separates zukünftiges Migrationsziel (`planned`/`unknown`); es werden keine Annahmen über ihn getroffen.
 
 Stand der Aufnahme: 2026-11-24.
 
@@ -27,7 +27,7 @@ Es ergänzt, ersetzt aber nicht:
 | `unknown` | Derzeit nicht verifiziert – darf nicht als Tatsache behandelt werden |
 | `owner-provided` | Vom Eigentümer als Ist-Zustand angegeben, aber nicht agentenseitig per allowlistetem Kommando verifiziert; keine agentenverifizierte Tatsache |
 
-Zusätzlich werden `planned` (vorgesehen, nicht umgesetzt/geprüft) und `hypothesis` (plausibel, unbelegt) verwendet. Historische Prüfergebnisse werden ausdrücklich als **historisch** gekennzeichnet. Der aktuelle Pfad `D:\XBridge 1.0\XBridge-Series-Github` ist `observed`; die Rechneridentität („Desktop-PC", Zuordnung zum geplanten zweiten Rechner) und die Hardwarewerte sind `owner-provided`, nicht agentenverifiziert.
+Zusätzlich werden `planned` (vorgesehen, nicht umgesetzt/geprüft) und `hypothesis` (plausibel, unbelegt) verwendet. Historische Prüfergebnisse werden ausdrücklich als **historisch** gekennzeichnet. Der aktuelle Workspace-Pfad `D:\XBridge 1.0\XBridge-Series-Autonomy` ist `observed`; `D:\XBridge 1.0\XBridge-Series-Github` ist ein **historischer** Checkout-Pfad. Die Rechneridentität („Desktop-PC", Zuordnung zum geplanten zweiten Rechner) und die Hardwarewerte sind `owner-provided`, nicht agentenverifiziert.
 
 **Quellen im Repository:** `AGENTS.md`; `docs/AGENT_WORKFLOW.md`; `docs/PORTABLE_SETUP.md`; `docs/AGENT_TASKS.md`; `docs/ROADMAP.md`; `docs/ARCHITECTURE.md`; `opencode.jsonc`; `.opencode/agents/{coordinator,developer,tester,architect,reviewer,researcher}.md`; `CMakeLists.txt`; `CMakePresets.json`; `CMakePresets.json.backup`; `build/windows-debug/CMakeCache.txt`.
 
@@ -52,7 +52,7 @@ Zusätzlich werden `planned` (vorgesehen, nicht umgesetzt/geprüft) und `hypothe
 | Angabe | Wert | Status / Quelle |
 |---|---|---|
 | Betriebssystem | Windows 11 Pro, Build 26200 (x64) | `owner-provided` (Edition/Build nicht agentenverifiziert); `observed` (Plattform `win32`). Historische Angabe „Laufwerk `E:`" (`docs/PORTABLE_SETUP.md:56`) gilt nicht für den aktuellen Desktop |
-| Aktueller Rechner | `observed`: Pfad `D:\XBridge 1.0\XBridge-Series-Github`; `E:` existiert in dieser Umgebung nicht | Pfad `observed`; Rechneridentität als aktive Entwicklungsumgebung `owner-provided`, nicht agentenverifiziert. Die Bezeichnung „erster Rechner" mit `E:`-Laufwerk ist **historisch** (`docs/PORTABLE_SETUP.md`, `docs/AGENT_TASKS.md`) |
+| Aktueller Rechner | `observed`: Workspace `D:\XBridge 1.0\XBridge-Series-Autonomy`; `E:` existiert in dieser Umgebung nicht | Pfad `observed`; `D:\XBridge 1.0\XBridge-Series-Github` und die Bezeichnung „erster Rechner" mit `E:`-Laufwerk sind **historisch** (`docs/PORTABLE_SETUP.md`, `docs/AGENT_TASKS.md`). Rechneridentität als aktive Entwicklungsumgebung `owner-provided`, nicht agentenverifiziert |
 | Externe SSD | Gemeinsame Verwendung an zwei Rechnern, jedoch **immer nur an einem Rechner gleichzeitig** | `owner-confirmed` (siehe Abschnitt 11) |
 | Host-CPU (Modell) | AMD Ryzen 7 5700X | `owner-provided`, nicht agentenverifiziert (zuvor `unknown`) |
 | Host-RAM (Größe) | 16 GB | `owner-provided`, nicht agentenverifiziert (zuvor `unknown`) |
@@ -73,7 +73,7 @@ Hinweis: Hardwareangaben im Projekt beziehen sich auf das **Gastziel** (Xbox Ser
 | CTest | `4.3.1-msvc1` | `observed`: `ctest --version` → `ctest version 4.3.1-msvc1` durch `tester` (Exit-Code nicht exponiert → `unknown`). Pfad `CMakeCache.txt:226` historisch |
 | MSBuild | `18.12.3` | `historisch dokumentiert` (`docs/AGENT_TASKS.md:95`, Build-Log des ersten Rechners) |
 | Git | `2.56.1`; HTTPS-Zugriff auf `origin` erforderlich | Version `owner-provided`, nicht agentenverifiziert (`git --version` nicht in der Allowlist). `observed`: `git.exe` unter `C:\Program Files\Git\cmd`; Git-Lesekommandos funktionieren über Befehlsnamen |
-| GitHub Desktop | `app-3.7.0`, installiert | `observed` (Verzeichnis `C:\Users\Dennis\AppData\Local\GitHubDesktop\app-3.7.0`). Publikation erfolgt laut `AGENTS.md` §8 durch den Owner |
+| GitHub Desktop | `app-3.7.0`, installiert | `observed` (Verzeichnis `C:\Users\Dennis\AppData\Local\GitHubDesktop\app-3.7.0`). Publikation erfolgt nicht über Desktop, sondern koordiniert: der Coordinator darf laut `AGENTS.md` §8 / `AGENT_WORKFLOW.md` committen, pushen und PRs verwalten (siehe §10); die ältere Owner-Only-Aussage ist **historisch**. |
 | OpenCode CLI | Ressourcen-Version `2.4.1` | `observed` (`opencode-cli.version`); Laufzeitversion `unknown` (nicht per allowlistetem Kommando geprüft). `2.3.2` (`docs/AGENT_TASKS.md:28,44`) ist **historisch** |
 | OpenCode Desktop | installiert | `observed` (Desktop-Anwendung vorhanden); konkrete Version `unknown` |
 
@@ -83,7 +83,7 @@ Compileroptionen `observed` (`CMakeLists.txt:23-27`): MSVC `/W4 /permissive-`, s
 
 | Pfad / Konzept | Status / Quelle |
 |---|---|
-| Projektverzeichnis `D:\XBridge 1.0\XBridge-Series-Github` | `observed` (aktuelles Arbeitsverzeichnis, Git-Kommandos). Der Wert `E:\XBridge 1.0\XBridge-Series-Github` (`CMAKE_HOME_DIRECTORY`, `docs/AGENT_TASKS.md:90`) ist **historisch** |
+| Projektverzeichnis `D:\XBridge 1.0\XBridge-Series-Autonomy` | `observed` (aktuelles Arbeitsverzeichnis, Git-Kommandos). `D:\XBridge 1.0\XBridge-Series-Github` und der Wert `E:\XBridge 1.0\XBridge-Series-Github` (`CMAKE_HOME_DIRECTORY`, `docs/AGENT_TASKS.md:90`) sind **historisch** |
 | VS-Installation `C:\Program Files\Microsoft Visual Studio\18\Community` | `observed` (siehe Abschnitt 4). `E:\PRO\Programm Daten\Visual Studio\18\Community` ist **historisch** |
 | `<PROJECT_ROOT>`-Konvention | `documented`: immer das Verzeichnis, das die Projektregeln enthält; Laufwerksbuchstabe ist egal (`docs/PORTABLE_SETUP.md:9`) |
 | Werkzeuge | `documented`: lokale Installationen, nicht im Projekt; gefunden über `PATH`, CMake-Erkennung oder lokale Toolchain (`docs/PORTABLE_SETUP.md:11`) |
@@ -106,7 +106,7 @@ Compileroptionen `observed` (`CMakeLists.txt:23-27`): MSVC `/W4 /permissive-`, s
 | Weitere Build-Ordner | `build/windows-2026-debug`, `build/windows-debug-vs2022` – `historisch dokumentiert` (`docs/AGENT_TASKS.md:90`), generiert, nicht versionsverwaltet |
 | `CMakePresets.json.backup` | `historisch dokumentiert`: enthält die alte Zeile `Visual Studio 17 2022` (`:7`), bewusst aufbewahrt, nicht Teil des publizierten Stands (`docs/PORTABLE_SETUP.md:59,102`) |
 
-Bekannte Eigenheit: `git diff --check` meldet eine CRLF-Warnung für `CMakePresets.json` – `observed`, nicht blockierend, dokumentiert in `docs/RELEASE_CHECKLIST.md:47` und `docs/AGENT_TASKS.md:92,97`. Der Exit-Code wurde in der aktuellen Prüfgrundlage nicht exponiert → `unknown`; `EXIT=0` ist eine **historische** Angabe (`docs/AGENT_TASKS.md:578,594`), keine neue Verifikation.
+`git diff --check` wurde in XB-AUTONOMY-ACTIVATION-01 vom Coordinator ausgeführt: `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0` (`observed`, `docs/AGENT_TASKS.md:157,169`). Die früher dokumentierte CRLF-Warnung für `CMakePresets.json` (`docs/RELEASE_CHECKLIST.md:47`, `docs/AGENT_TASKS.md:92,97`) ist **historisch** und nicht blockierend; ältere `unknown`-Angaben zum Exit-Code sind **historisch**.
 
 ## 7. Build- und Testverfahren
 
@@ -130,7 +130,7 @@ Historische Verifikation (ausschließlich **erster Rechner**, `docs/AGENT_TASKS.
 
 - Mit den aus dem `CMakeCache.txt` belegten **absoluten VS2026-Executables** unter `E:\PRO\Programm Daten\Visual Studio\18\Community\...\CMake\bin\` liefen Configure (`exit 0`), Debug-Build (`exit 0`, Artefakte `xbridge_core.lib`, `xbridge.exe`, `xbridge_tests.exe`) und CTest (`exit 0`, `1/1 Test`, `100% tests passed, 0 tests failed out of 1`). Der `E:`-Pfad und die Exit-Codes sind **historisch**.
 - Diese Ergebnisse sind **historisch** und wurden in dieser Aufnahme **nicht** wiederholt. Sie belegen einen Build/Test des Scaffolds, **keine** Xbox-Emulation.
-- `observed` (aktuell): Plain `cmake` und `ctest` sind im Agentenkontext über den einfachen Befehlsnamen erreichbar – der `tester` meldete `cmake version 4.3.1-msvc1` und `ctest version 4.3.1-msvc1`, jeweils ohne Ablehnung; Exit-Codes nicht exponiert (`unknown`). Die historische `CommandNotFoundException` (`docs/AGENT_TASKS.md:92`) ist **superseded**; ihre damalige Ursache bleibt `unknown`. Der Coordinator bleibt für `cmake *`/`ctest *` bewusst gesperrt (`coordinator.md:74-79`), kein Fehler.
+- `observed` (aktuell): Plain `cmake` und `ctest` sind im Agentenkontext über den einfachen Befehlsnamen erreichbar – der `tester` meldete `cmake version 4.3.1-msvc1` und `ctest version 4.3.1-msvc1`, jeweils ohne Ablehnung; Exit-Codes nicht exponiert (`unknown`). Die historische `CommandNotFoundException` (`docs/AGENT_TASKS.md:92`) ist **superseded**; ihre damalige Ursache bleibt `unknown`. Der Coordinator bleibt für `cmake *`/`ctest *` bewusst gesperrt (`coordinator.md:80-85`), kein Fehler.
 - Es existiert genau ein CTest-Ziel `xbridge_tests` (`CMakeLists.txt:32-37`); keine Differenz-, Fuzz-, Coverage- oder Grafiktests (`docs/AGENT_TASKS.md:381`).
 
 ## 8. OpenCode-Agenten und ihre Aufgaben
@@ -160,9 +160,9 @@ Konfiguration `observed` (`opencode.jsonc:4-13`): `default_agent = coordinator`;
 
 `observed` (`opencode.jsonc`, Agenten-Frontmatter):
 
-- **Global:** `external_directory "*" ask` (`opencode.jsonc:75`), `shell "*" ask` (`:77`); `question/subagent/webfetch/websearch "*" deny` (`:110-113`). Die veraltete Angabe `:106-109` bzw. `:74-109` sowie `AGENT_TASKS.md:290` mit `:49/50/51-52` sind **historisch**.
-- **Harte Denys (`opencode.jsonc:131-165`):** `git commit/push/merge/rebase/reset/clean/checkout/switch/restore/stash/revert/cherry-pick/pull/tag/worktree/config --global`, `gh *`, Install- und destruktive Shell-Kommandos, `read/edit:.git/**` (`:156-159`) und `.env`-Zugriffe (`:160-165`, inkl. dokumentierter `.env.example`-Seiteneffekt). Die veraltete Angabe `:120-155` bzw. `:63-95` (`AGENT_TASKS.md:290`) ist **historisch**. Mutierende Code-Mode-Werkzeuge sind über vier Regeln erfasst: `automation_create`, `automation_delete`, `opencode_session_move`, `opencode_worktree_create` (`opencode.jsonc:123-128`). Der überarbeitete Patch 3 wurde vom Owner angewendet und im angewendeten Zustand unabhängig reviewer-geprüft (`PASS`, `docs/AGENT_TASKS.md:794`, `docs/ROADMAP.md:39,45`); die ältere Widerrufsangabe (`docs/AGENT_TASKS.md:677,689-691`) ist **historisch** und durch die angewendete Fassung superseded. Die Laufzeitwirkung der vier Denys bleibt `unknown` (`docs/ROADMAP.md:39`); `opencode.worktree_remove` bleibt akzeptierte Einschränkung ohne breites `edit:* deny`. Keine weitere Syntaxentscheidung offen.
-- **Coordinator:** `shell "*" deny`, danach ausschließlich exakte, read-only Git-Kommandos (`git status --porcelain…`, `git diff --cached --name-only`, `git diff --check`, `git rev-parse HEAD`, `git branch --show-current`, `git diff HEAD --no-ext-diff[/--stat/--name-only]`, `git show --no-ext-diff`, `git log -5 --oneline`). `question "*" allow`, `webfetch/websearch deny`.
+- **Global:** `external_directory "*" ask` (`opencode.jsonc:75`), `shell "*" ask` (`:77`), `question "*" ask` (`:117`), `subagent` erlaubt genau `architect`, `developer`, `tester`, `reviewer`, `researcher` (`:118-122`), `webfetch/websearch "*" deny` (`:123-124`). Ältere Angaben in diesem Abschnitt sind **historisch** und durch XB-AUTONOMY-ACTIVATION-01 superseded.
+- **Harte Denys (`opencode.jsonc:142-172`):** destruktive Git-Befehle (u. a. `rebase`, `reset`, `clean`, `checkout`, `switch`, `restore`, `stash`, `revert`, `cherry-pick`, `pull`, `tag`, `worktree`, `git config --global *`), Install-Kommandos, `Remove-Item`/`rm`/`del`/`Move-Item`, `read/edit:.git/**` und `.env`-Zugriffe (inkl. dokumentierter `.env.example`-Seiteneffekt). `git add/commit/push/merge` und `gh auth/pr/repo` sind **keine** harten Denys, sondern für den Coordinator als Shell-Regeln erlaubt (`coordinator.md:125-145`). Mutierende Code-Mode-Werkzeuge sind über vier Regeln erfasst: `automation_create`, `automation_delete`, `opencode_session_move`, `opencode_worktree_create` (`opencode.jsonc:134-139`); die Laufzeitwirkung bleibt `unknown`.
+- **Coordinator:** `shell "*" deny`, danach exakte Git-Read-Kommandos einschließlich `git status --short --branch` (`coordinator.md:92-124`) sowie `git add/commit/push/merge`, `gh auth status`, `gh pr *`, `gh repo view *` (`coordinator.md:125-145`). `question "*" allow`, `webfetch/websearch deny`; `opencode *` bleibt bewusst deny.
 - **Entwickler/Tester:** exakte Git- sowie CMake-/CTest-Befehle erlaubt; `opencode *` und `shell "*" deny`.
 - **Architect/Reviewer:** `edit "*" deny`, alle Shell-Zugriffe deny – strikt read-only.
 - **Researcher:** Web-Tools erlaubt, Shell deny.
@@ -172,7 +172,7 @@ Konfiguration `observed` (`opencode.jsonc:4-13`): `default_agent = coordinator`;
 - `plan.question = allow` (`opencode.jsonc:54`) ist **beabsichtigt und freigegeben**.
 - `coordinator → edit docs/DEVELOPMENT_ENVIRONMENT.md = allow` (`coordinator.md:23-25`) ist **beabsichtigt und freigegeben**; die Freigabe zur Erstellung dieser Datei erfolgte mit dem vorliegenden Auftrag.
 
-Weitere Begrenzungen `observed`: `opencode debug config` / `opencode debug agents` sind für Agents über `shell "opencode *" deny` blockiert (Owner-Prüfung außerhalb des Agenten erforderlich); `git status --short --branch` ist global erlaubt (`opencode.jsonc:80`), aber nicht in den Coordinator-Allows und daher für den Coordinator blockiert.
+Weitere Begrenzungen `observed`: `opencode debug config` / `opencode debug agents` sind für Agents über `shell "opencode *" deny` blockiert (Owner-Prüfung außerhalb des Agenten erforderlich). `git status --short --branch` ist seit XB-AUTONOMY-ACTIVATION-01 auch im Coordinator erlaubt (`coordinator.md:95-97`) und lieferte `## main...origin/main`, `EXIT=0`; die ältere Blockade-Aussage ist **historisch**.
 
 ## 10. Git-, Review- und Veröffentlichungsprozess
 
@@ -181,12 +181,12 @@ Weitere Begrenzungen `observed`: `opencode debug config` / `opencode debug agent
 - Jede Aufgabe folgt: Plan → Implementierung → Selbstprüfung → unabhängiges Review → gebündelte Korrektur → erneutes Review → Abschluss. Maximal zwei Korrekturrunden; danach Eskalation.
 - Review-Findings werden klassifiziert als `ACTIONABLE`, `OWNER_DECISION`, `NON_BLOCKING`, `UNKNOWN`; der Reviewer bleibt read-only.
 - Pflichtnachweise: exakte Kommandos und reale Ergebnisse, `git diff --check`, vollständige Diff-Inspektion, CTest bei Implementierungsaufgaben.
-- **Alle Git-/GitHub-Publikationsschritte führt der Eigentümer aus.** Agents dürfen nicht committen, pushen, mergen, taggen, releasen, Historie umschreiben, verwerfen oder PRs erstellen.
-- `documented` (`docs/AGENT_TASKS.md:588`): Publikationsgruppe 0 besteht aus genau `docs/AGENT_WORKFLOW.md`, `docs/RELEASE_CHECKLIST.md`, `docs/AGENT_TASKS.md`, `docs/ROADMAP.md`, `docs/PORTABLE_SETUP.md`; `AGENTS.md` ist wegen einer offenen Versionierungsentscheidung ausgenommen. Dies ist eine Gruppierung, keine Publikationsfreigabe.
+- `documented` (`AGENTS.md` §8, `docs/AGENT_WORKFLOW.md`, XB-AUTONOMY-ACTIVATION-01): Der **Coordinator** darf nach Tests und unabhängigem Review committen, pushen, mergen und GitHub-PRs erstellen/aktualisieren; Subagenten veröffentlichen nicht. Die ältere Aussage zur ausschließlichen Owner-Publikation ist **historisch** und durch die aktuelle Freigabe superseded. Harte Denys für Historie-Umschreibung, Verwerfen, destruktive Befehle und globale Git-Konfiguration bleiben unverändert. Tatsächlich ausgeführt wurde in diesem Paket kein Publish-Schritt.
+- `documented` (Abschnitt `XB-0086-C2 — final status alignment and publication group 0 definition` in `docs/AGENT_TASKS.md`): Publikationsgruppe 0 besteht aus genau `docs/AGENT_WORKFLOW.md`, `docs/RELEASE_CHECKLIST.md`, `docs/AGENT_TASKS.md`, `docs/ROADMAP.md`, `docs/PORTABLE_SETUP.md`; `AGENTS.md` ist wegen einer offenen Versionierungsentscheidung ausgenommen. Die frühere Zeilenangabe `:588` ist durch nachträgliche Ledger-Einträge ungültig geworden und wird nicht mehr verwendet. Dies ist eine Gruppierung, keine Publikationsfreigabe.
 
 `observed` (Arbeitsstand bei Erstellung dieser Datei): Branch `docs/opencode-publication-group-2`, HEAD `58aa1f60eb5e67cbf8aa884f694fce208b54819f`. Nicht publizieren: `.owner-patch-backup/**`, `CMakePresets.json.backup`, `debug-*.txt` (untracked Artefakte; keine pauschale Index-Aufnahme).
 
-`documented`/`unknown`: Ein gesondertes Paket 2 oder eine Publikationsgruppe 2 ist in `docs/AGENT_TASKS.md` nicht definiert; die einzige dort definierte Gruppierung ist Publikationsgruppe 0 (`docs/AGENT_TASKS.md:588`). Package 2 bleibt geschlossen und nicht freigegeben; diese Korrekturrunde behandelt ausschließlich die vom Eigentümer freigegebenen P1-Findings.
+`documented`/`unknown`: Ein gesondertes Paket 2 oder eine Publikationsgruppe 2 ist in `docs/AGENT_TASKS.md` nicht definiert; die einzige dort definierte Gruppierung ist Publikationsgruppe 0 (Abschnitt `XB-0086-C2 — final status alignment and publication group 0 definition`). Package 2 bleibt geschlossen und nicht freigegeben; diese Korrekturrunde behandelt ausschließlich die vom Eigentümer freigegebenen P1-Findings.
 
 ## 11. Externe SSD und geplanter Einsatz an zwei Rechnern
 
@@ -209,12 +209,12 @@ Weitere Begrenzungen `observed`: `opencode debug config` / `opencode debug agent
 | Host-CPU Ryzen 7 5700X, RAM 16 GB, GPU RTX 2060 SUPER | `owner-provided`, nicht agentenverifiziert (zuvor `unknown`) |
 | GitHub Desktop, OpenCode Desktop | `observed` installiert (`app-3.7.0` bzw. Desktop-Anwendung); konkrete OpenCode-Laufzeitversion `unknown`. Interaktiver TUI-`ask`-Dialog weiterhin `unknown` |
 | `opencode debug config` / `debug agents` im Agentenkontext | `blocked` (`shell "opencode *" deny`) – Owner-Prüfung außerhalb erforderlich |
-| `git status --short --branch` für Coordinator | `blocked` – nicht in den Coordinator-Allows |
+| `git status --short --branch` für Coordinator | `observed` – erlaubt seit XB-AUTONOMY-ACTIVATION-01, `EXIT=0` |
 | Konkrete Modellnamen, MCP-Server / -Authentifizierungen zur Laufzeit | `unknown` – kein `mcp`-Abschnitt in `opencode.jsonc` |
 | `debug-agents-full.txt` | `observed`: historischer Vor-Patch-Snapshot – nicht als aktuelle Verifikation verwenden |
 | `debug-config-check.txt`, `debug-agents-check.txt` | `unknown` – als Binärdateien nicht als Text interpretiert |
 | Plain `cmake`/`ctest` im Agentenkontext | `observed` über einfache Befehlsnamen durch `tester` (`4.3.1-msvc1`); Exit-Codes `unknown`. Frühere `CommandNotFoundException` (`docs/AGENT_TASKS.md:92`) ist **historisch / superseded** |
-| CRLF-Warnung `CMakePresets.json` bei `git diff --check` | `observed`, Exit-Code in der aktuellen Prüfgrundlage `unknown`, nicht blockierend |
+| `git diff --check` | `observed`: `EXIT=0` in XB-AUTONOMY-ACTIVATION-01; historische CRLF-Warnung für `CMakePresets.json` nicht blockierend |
 | Build/CTest in dieser Aufnahme | **nicht ausgeführt** – historische Ergebnisse werden nicht als neue Prüfung ausgegeben |
 
 ## 13. Voraussetzungen für die spätere Xbox-Series-X-Emulatorentwicklung

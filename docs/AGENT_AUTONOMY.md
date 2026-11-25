@@ -15,12 +15,13 @@ Stand: 2026-11-24. Freigegeben als Teil von `XB-P2`. Evidenzlabels: `documented`
 | Grad | Bezeichnung | Erlaubt | Nicht erlaubt | Typisches Beispiel |
 |---|---|---|---|---|
 | A0 | `read-only` | `read`, `glob`, `grep`, erlaubte Git-Leseoperationen | jede Dateiänderung | Architect, Reviewer, Vorprüfung |
-| A1 | `bounded-doc` | Schreiben **nur** auf namentlich genannte, berechtigte `docs/**`-Pfade | Konfiguration, Produktcode, andere Docs | Coordinator bei Dokumentationspaketen |
+| A1 | `bounded-doc` | Schreiben **nur** auf namentlich genannte, berechtigte `docs/**`- oder konfigurierte Projektdateien | Produktcode, nicht zugewiesene Pfade | Coordinator bei Dokumentations-/Konfigurationspaketen |
 | A2 | `package-write` | Schreiben auf die im Envelope genannten `src/**`, `include/**`, `tests/**`-Pfade | fremde Module, nicht zugewiesene Tests | Developer im freigegebenen Implementierungspaket |
 | A3 | `verify-correct` | Ausführen der erlaubten Prüfungen; gebündelte Korrektur im eigenen Writersatz | Abschwächen von Tests, Ausweiten des Writer-Satzes | Tester, gezielte Korrektur durch zuständigen Writer |
-| A4 | `owner-only` | — (ausschließlich Owner) | alle schreibenden/changing Aktionen | Publikation, Rechte, Konfiguration, ADRs |
+| A4 | `owner-only` | — (ausschließlich Owner) | eigenmächtige Rechteerweiterung, ADR-/Lizenzentscheidung, Produktfreigabe, destruktive Aktionen | neue Rollen/Rechte, ADRs, `LICENSE`, `FINAL_CLEANUP` |
+| A5 | `bounded-publication` | exakt konfigurierte Git/GitHub-Kommandos nach Review und Diff-Prüfung | Subagenten-Publikation, History-Rewrite, ungeprüfte Änderungen | Coordinator-Commit/Push/Merge/PR |
 
-`documented` — Der Grad wird pro Aufgabe im Envelope festgelegt (Felder `FILES`, `ALLOWED`, `FORBIDDEN`). Ein Wechsel zu einem höheren Grad benötigt eine neue Owner-Freigabe. `observed` — der Coordinator besitzt derzeit A1 für zwölf namentlich freigegebene Dokumente (`coordinator.md:8-43`; darunter die sechs XB-P2-Dokumente), nicht für `opencode.jsonc`, `.opencode/**`, `AGENTS.md` oder Produktcode.
+`documented` — Der Grad wird pro Aufgabe im Envelope festgelegt (Felder `FILES`, `ALLOWED`, `FORBIDDEN`). Ein Wechsel zu einem höheren Grad benötigt eine neue Owner-Freigabe. `observed` — der Coordinator besitzt A1 für die namentlich freigegebenen Dokument- und Konfigurationspfade (`coordinator.md:8-61`, einschließlich `opencode.jsonc` und `.opencode/**`) sowie A5 für exakt konfigurierte Git/GitHub-Kommandos nach Review; `AGENTS.md`, `docs/DECISIONS.md` und Produktcode bleiben für ihn deny.
 
 ## 3. Verantwortlichkeiten der installierten Rollen
 
@@ -28,7 +29,7 @@ Stand: 2026-11-24. Freigegeben als Teil von `XB-P2`. Evidenzlabels: `documented`
 
 | Rolle | Verantwortung | Schreibgrad | Darf nicht |
 |---|---|---|---|
-| `coordinator` | Envelope, Planung, Writer-Zuordnung, Ergebnis-Konsolidierung, Ledger/Status | A1, paketabhängig | Produktcode schreiben, Rechte erweitern, Subagenten-Duplicate starten |
+| `coordinator` | Envelope, Planung, Writer-Zuordnung, Ergebnis-Konsolidierung, Ledger/Status, koordinierte Publikation | A1/A5, paketabhängig | Produktcode schreiben, Rechte ohne Freigabe erweitern, Subagenten-Duplicate starten |
 | `architect` | Architektur-, Interface-, ADR-, Abhängigkeits- und Risikoprüfung | A0 | entscheiden, schreiben, implementieren |
 | `developer` | Implementierung freigegebener Pakete | A2, nur zugewiesene Pfade | fremde Module, Konfiguration, unzugewiesene Tests |
 | `tester` | unabhängige Verifikation, Build/CTest/Diff | A3, `tests/**` | Produktcode ändern, Tests abschwächen |
@@ -41,10 +42,10 @@ Stand: 2026-11-24. Freigegeben als Teil von `XB-P2`. Evidenzlabels: `documented`
 
 `documented` — Folgende Entscheidungen sind ausschließlich dem Owner vorbehalten und werden von keinem Agenten eigenmächtig getroffen:
 
-1. Freigabe von Paketen, Envelopes und Änderungsumfang.
-2. Änderungen an `opencode.jsonc`, `.opencode/**`, `AGENTS.md`, `ai/**` und Agentenberechtigungen.
-3. Installation oder Rechteänderung von Agenten; neue Abhängigkeiten; öffentliche Schnittstellen; ADRs; Architekturänderungen.
-4. Git-/GitHub-Publikation: Staging, Commit, Push, PR, Merge, Tag, Release, Historie.
+1. Entscheidungen, die über bestehende Freigaben hinausgehen (neue Strategie, ADR, Lizenz, Produktfreigabe).
+2. Änderungen an `AGENTS.md`, `docs/DECISIONS.md`, `LICENSE` und Agentenberechtigungen; `opencode.jsonc`/`.opencode/**` bleiben im projektautorisierten Coordinator-Rahmen korrigierbar.
+3. Installation oder Rechteänderung von Agenten; neue Abhängigkeiten; öffentliche Schnittstellen; Architekturänderungen.
+4. Git-/GitHub: Tag, Release, strategische Branch-Entscheidungen und Historie-Umschreibung. Staging, Commit, Push, Merge und PR nimmt der Coordinator nach Review innerhalb der konfigurierten Regeln vor.
 5. Destruktive Aktionen: Löschen/Verschieben bestehender Dateien, `git reset`/`clean`, Worktree-Bereinigung.
 6. Produktfreigabe, Versions-/Kompatibilitätsaussagen und `FINAL_CLEANUP`.
 7. Wahl zwischen widersprüchlichen Anforderungen oder nicht eindeutigen Prioritäten.
@@ -82,7 +83,7 @@ Stand: 2026-11-24. Freigegeben als Teil von `XB-P2`. Evidenzlabels: `documented`
 | B — Direkte Umsetzung | A1/A2/A3, disjunkte Writer | Änderungen ohne Zwischenberichte, parallel nur bei getrennten Pfaden |
 | C — Gebündelte Abschlussprüfung | A0 (Reviewer) | ein Verdict über den Gesamtumfang mit Datei:Zeile-Belegen |
 | D — Gezielte Korrektur | A1/A2/A3 | nur betroffene Bereiche und direkte Auswirkungen erneut geprüft |
-| E — Abschluss | A1 | kompakter Bericht, offene Punkte, Empfehlung; Publikation bleibt Owner |
+| E — Abschluss | A1/A5 | kompakter Bericht, offene Punkte, Empfehlung; Coordinator publiziert geprüften Stand, Subagenten nicht |
 
 `documented` — Der Übergang von B nach C erfolgt ohne separate Zwischenreviews pro Datei. Ein erfolgreicher Build ersetzt nie die funktionale und sicherheitliche Prüfung.
 

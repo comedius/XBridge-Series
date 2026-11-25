@@ -12,8 +12,8 @@ Development-only document. Not part of the product package.
 
 ## Development infrastructure preservation
 
-- [ ] `.opencode/**` remains in the private development repository.
-- [ ] `opencode.jsonc` remains in the private development repository.
+- [ ] `.opencode/**` remains in the public development repository.
+- [ ] `opencode.jsonc` remains in the public development repository.
 - [ ] `AGENTS.md`, `ai/**`, and agent/workflow docs remain in the development repository.
 - [ ] Agents remain usable for post-release bug fixes and updates. Only six agents are installed (`coordinator`, `architect`, `developer`, `tester`, `reviewer`, `researcher`); the nine specialists, including `test-engineer`, remain `planned` and must not be reported as installed.
 

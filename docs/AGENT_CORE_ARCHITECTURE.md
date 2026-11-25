@@ -80,7 +80,7 @@ Adaptervertrag (konzeptionell, nicht als Code):
 3. **Delegation:** genau ein Writer pro Datei; keine Subagenten-Ketten.
 4. **Prüfung:** erlaubte Kommandos, echte Ergebnisse, `git diff --check`, Review mit Datei:Zeile-Belegen.
 5. **Persistenz:** Status und Evidenz in projekteinternen Dokumenten; Sitzungen/Ruhezustände plattformspezifisch.
-6. **Publikationsübergabe:** Endpunkt ist immer der Owner; Adapter führt keine Veröffentlichung aus.
+6. **Publikationsübergabe:** Subagenten geben Ergebnisse an den Coordinator; der Coordinator veröffentlicht nur geprüfte Pakete über die konfigurierten Git/GitHub-Regeln. Adapter und Subagenten veröffentlichen nicht.
 7. **Evidenz:** Core-Labels bleiben unverändert; Adapter darf sie nicht in „erfolgreich" umdeuten.
 
 `documented` — Ein Adapter darf Core-Regeln nicht abschwächen. Wenn eine Plattform eine Core-Regel nicht abbilden kann, wird der Task `blocked`/`needs_owner`, nicht still angepasst.
@@ -107,7 +107,7 @@ Adaptervertrag (konzeptionell, nicht als Code):
 
 ## 9. Beziehung zur Produktgrenze
 
-`documented` — Agent Core, Adapter, Prompts, Workflow-Dokumente und Automation sind Entwicklungsinfrastruktur und bleiben im privaten Entwicklungsrepository. Das Produktpaket wird später aus einer expliziten Allowlist gebildet; diese Dokumente werden automatisch ausgeschlossen. Produktcode enthält keine Agenten-, OpenCode-, API-Key- oder KI-Dienstlogik, solange dies nicht durch eine eigene ADR und Owner-Freigabe als Produktfunktion definiert ist.
+`documented` — Agent Core, Adapter, Prompts, Workflow-Dokumente und Automation sind Entwicklungsinfrastruktur und bleiben im öffentlichen Entwicklungsrepository. Das Produktpaket wird später aus einer expliziten Allowlist gebildet; diese Dokumente werden automatisch ausgeschlossen. Produktcode enthält keine Agenten-, OpenCode-, API-Key- oder KI-Dienstlogik, solange dies nicht durch eine eigene ADR und Owner-Freigabe als Produktfunktion definiert ist.
 
 ## 10. Offene Punkte
 

@@ -93,6 +93,9 @@ permissions:
     resource: "git status --porcelain=v1 --untracked-files=all"
     effect: allow
   - action: shell
+    resource: "git status --short --branch"
+    effect: allow
+  - action: shell
     resource: "git diff --cached --name-only"
     effect: allow
   - action: shell

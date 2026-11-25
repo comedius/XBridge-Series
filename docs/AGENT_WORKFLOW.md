@@ -75,7 +75,7 @@ The reviewer stays read-only: it never edits files, never launches subagents, an
 
 ## Product / development boundary
 
-The private development repository keeps all agent systems permanently, including:
+The public development repository keeps all agent systems permanently, including:
 
 - `.opencode/**`
 - `opencode.jsonc`
