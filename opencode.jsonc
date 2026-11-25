@@ -98,6 +98,13 @@
     { "action": "shell", "resource": "cmake --preset ninja-debug", "effect": "allow" },
     { "action": "shell", "resource": "cmake --build --preset ninja-debug", "effect": "allow" },
     { "action": "shell", "resource": "ctest --preset ninja-debug --output-on-failure", "effect": "allow" },
+    { "action": "shell", "resource": "git add *", "effect": "allow" },
+    { "action": "shell", "resource": "git commit *", "effect": "allow" },
+    { "action": "shell", "resource": "git push *", "effect": "allow" },
+    { "action": "shell", "resource": "git merge *", "effect": "allow" },
+    { "action": "shell", "resource": "gh auth status", "effect": "allow" },
+    { "action": "shell", "resource": "gh pr *", "effect": "allow" },
+    { "action": "shell", "resource": "gh repo view *", "effect": "allow" },
 
     { "action": "shell", "resource": "opencode --version*", "effect": "allow" },
     { "action": "shell", "resource": "opencode -v*", "effect": "allow" },
@@ -129,9 +136,6 @@
   ],
 
   "policies": [
-    { "action": "tool.use", "resource": "shell:git commit *", "effect": "deny" },
-    { "action": "tool.use", "resource": "shell:git push *", "effect": "deny" },
-    { "action": "tool.use", "resource": "shell:git merge *", "effect": "deny" },
     { "action": "tool.use", "resource": "shell:git rebase *", "effect": "deny" },
     { "action": "tool.use", "resource": "shell:git reset *", "effect": "deny" },
     { "action": "tool.use", "resource": "shell:git clean *", "effect": "deny" },
@@ -145,7 +149,6 @@
     { "action": "tool.use", "resource": "shell:git tag *", "effect": "deny" },
     { "action": "tool.use", "resource": "shell:git worktree *", "effect": "deny" },
     { "action": "tool.use", "resource": "shell:git config --global *", "effect": "deny" },
-    { "action": "tool.use", "resource": "shell:gh *", "effect": "deny" },
     { "action": "tool.use", "resource": "shell:cmake --install *", "effect": "deny" },
     { "action": "tool.use", "resource": "shell:cmake --build * --target install*", "effect": "deny" },
     { "action": "tool.use", "resource": "shell:Remove-Item *", "effect": "deny" },
