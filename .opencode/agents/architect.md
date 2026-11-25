@@ -20,6 +20,9 @@ permissions:
   - action: shell
     resource: "ctest *"
     effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
   - action: webfetch
     resource: "*"
     effect: deny

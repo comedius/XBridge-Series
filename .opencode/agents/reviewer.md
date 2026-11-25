@@ -26,6 +26,9 @@ permissions:
   - action: shell
     resource: "ctest *"
     effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
 ---
 
 You are the XBridge reviewer subagent. You are strictly read-only.
