@@ -5,10 +5,18 @@
 #include "xbridge/cpu/x64_instruction_decoder.hpp"
 #include "xbridge/cpu/x64_instruction_interpreter.hpp"
 #include "xbridge/memory/memory.hpp"
+#include "xbridge/memory/guest_address.hpp"
+#include "xbridge/memory/guest_address_space.hpp"
+#include "xbridge/memory/guest_memory_result.hpp"
+#include "xbridge/memory/guest_physical_memory.hpp"
+#include "xbridge/memory/guest_region.hpp"
 #include "xbridge/host/execution_policy.hpp"
 #include <span>
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <limits>
 #include <stdexcept>
@@ -2021,6 +2029,1177 @@ void test_x64_step_at_rip_bridge() {
     }
 }
 
+bool bytes_equal(std::span<const std::uint8_t> lhs, std::span<const std::uint8_t> rhs) noexcept {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < lhs.size(); ++index) {
+        if (lhs[index] != rhs[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+memory::MemoryResult make_memory_result(bool ok,
+                                         memory::MemoryFault fault,
+                                         memory::MemoryAccess access,
+                                         memory::MemoryAccessContext context,
+                                         std::uint64_t address,
+                                         std::uint64_t requested_length,
+                                         std::uint64_t completed_bytes) noexcept {
+    memory::MemoryResult result;
+    result.ok = ok;
+    result.fault = fault;
+    result.access = access;
+    result.context = context;
+    result.address = address;
+    result.requested_length = requested_length;
+    result.completed_bytes = completed_bytes;
+    result.translated_address.reset();
+    result.region_base.reset();
+    return result;
+}
+
+bool result_invariant(const memory::MemoryResult& result) noexcept {
+    return result.ok == (result.fault == memory::MemoryFault::None) &&
+           result.completed_bytes <= result.requested_length &&
+           static_cast<bool>(result) == result.ok;
+}
+
+bool result_matches(const memory::MemoryResult& result,
+                    memory::MemoryFault fault,
+                    std::uint64_t address,
+                    std::uint64_t requested_length) noexcept {
+    return result_invariant(result) && result.fault == fault &&
+           result.address == address && result.requested_length == requested_length;
+}
+
+bool data_result_matches(const memory::MemoryResult& result,
+                         memory::MemoryFault fault,
+                         std::uint64_t address,
+                         std::uint64_t requested_length,
+                         std::uint64_t completed_bytes) noexcept {
+    return result_matches(result, fault, address, requested_length) &&
+           result.completed_bytes == completed_bytes;
+}
+
+bool optional_equals(const std::optional<std::uint64_t>& value,
+                     std::uint64_t expected) noexcept {
+    return value.has_value() && *value == expected;
+}
+
+template <typename Result>
+void check_named_result_helpers() {
+    const auto access = memory::MemoryAccess::Execute;
+    const auto context = memory::MemoryAccessContext::Fetch;
+    constexpr std::uint64_t address = 0x1'0000'0000ULL;
+    constexpr std::uint64_t length = 4;
+    constexpr std::uint64_t completed = 4;
+
+    const auto verify_success = [&](const Result& result,
+                                    std::uint64_t expected_completed) {
+        check(result_invariant(result) &&
+              result.fault == memory::MemoryFault::None &&
+              result.access == access &&
+              result.context == context &&
+              result.address == address &&
+              result.requested_length == length &&
+              result.completed_bytes == expected_completed &&
+              !result.translated_address.has_value() &&
+              !result.region_base.has_value(),
+              "declared MemoryResult success helper initializes all diagnostic fields");
+    };
+
+    if constexpr (requires { Result::success(access, context, address, length, completed); }) {
+        verify_success(Result::success(access, context, address, length, completed), completed);
+    } else if constexpr (requires { Result::success(access, context, address, length); }) {
+        verify_success(Result::success(access, context, address, length), length);
+    } else if constexpr (requires { Result::make_success(access, context, address, length, completed); }) {
+        verify_success(Result::make_success(access, context, address, length, completed), completed);
+    } else if constexpr (requires { Result::make_success(access, context, address, length); }) {
+        verify_success(Result::make_success(access, context, address, length), length);
+    } else {
+        check(false, "MemoryResult exposes a static success helper with the declared diagnostic fields");
+    }
+
+    const auto verify_failure = [&](const Result& result) {
+        check(result_invariant(result) &&
+              result.fault == memory::MemoryFault::Unmapped &&
+              result.access == access &&
+              result.context == context &&
+              result.address == address &&
+              result.requested_length == length &&
+              result.completed_bytes == 0 &&
+              !result.translated_address.has_value() &&
+              !result.region_base.has_value(),
+              "declared MemoryResult failure helper initializes all diagnostic fields");
+    };
+
+    if constexpr (requires {
+                      Result::failure(memory::MemoryFault::Unmapped, access, context,
+                                      address, length);
+                  }) {
+        verify_failure(Result::failure(memory::MemoryFault::Unmapped, access, context,
+                                       address, length));
+    } else if constexpr (requires {
+                             Result::failure(memory::MemoryFault::Unmapped, access, context,
+                                             address);
+                         }) {
+        verify_failure(Result::failure(memory::MemoryFault::Unmapped, access, context,
+                                       address));
+    } else if constexpr (requires {
+                             Result::make_failure(memory::MemoryFault::Unmapped, access,
+                                                  context, address, length);
+                         }) {
+        verify_failure(Result::make_failure(memory::MemoryFault::Unmapped, access,
+                                            context, address, length));
+    } else if constexpr (requires {
+                             Result::make_failure(memory::MemoryFault::Unmapped, access,
+                                                  context, address);
+                         }) {
+        verify_failure(Result::make_failure(memory::MemoryFault::Unmapped, access,
+                                            context, address));
+    } else {
+        check(false, "MemoryResult exposes a static failure helper with the declared diagnostic fields");
+    }
+
+    if constexpr (requires { Result::success(access, context, address, length, 8U); }) {
+        verify_success(Result::success(access, context, address, length, 8U), length);
+    } else {
+        check(false, "MemoryResult exposes a success helper that clamps completed bytes to the requested length");
+    }
+
+    if constexpr (requires {
+                      Result::failure(memory::MemoryFault::None, access, context,
+                                      address, length);
+                  }) {
+        const auto normalized_failure =
+            Result::failure(memory::MemoryFault::None, access, context, address, length);
+        check(result_invariant(normalized_failure) &&
+              !normalized_failure.ok &&
+              normalized_failure.fault == memory::MemoryFault::Unsupported &&
+              normalized_failure.access == access &&
+              normalized_failure.context == context &&
+              normalized_failure.address == address &&
+              normalized_failure.requested_length == length &&
+              normalized_failure.completed_bytes == 0 &&
+              !normalized_failure.translated_address.has_value() &&
+              !normalized_failure.region_base.has_value(),
+              "declared MemoryResult failure helper maps MemoryFault::None to Unsupported");
+    } else {
+        check(false, "MemoryResult exposes a failure helper accepting MemoryFault::None");
+    }
+}
+
+class RecordingDeviceDispatcher final : public memory::IDeviceDispatcher {
+public:
+    bool fail{false};
+    std::uint8_t read_pattern{0xC3};
+    std::size_t calls{0};
+    memory::GuestPhysicalAddress last_region_base{};
+    std::uint64_t last_offset{0};
+    memory::MemoryAccess last_access{memory::MemoryAccess::Read};
+    memory::MemoryAccessContext last_context{memory::MemoryAccessContext::Data};
+    std::array<std::uint8_t, 64> last_data{};
+    std::size_t last_data_size{0};
+
+    memory::MemoryResult dispatch(const memory::DeviceAccessRequest& request) noexcept override {
+        ++calls;
+        last_region_base = request.region_base;
+        last_offset = request.offset;
+        last_access = request.access;
+        last_context = request.context;
+        last_data_size = request.data.size() < last_data.size()
+                             ? request.data.size()
+                             : last_data.size();
+        for (std::size_t index = 0; index < last_data_size; ++index) {
+            last_data[index] = request.data[index];
+        }
+
+        const std::uint64_t address = request.region_base.value + request.offset;
+        if (fail) {
+            return make_memory_result(false, memory::MemoryFault::Unsupported,
+                                      request.access, request.context, address,
+                                      request.data.size(), 0);
+        }
+        if (request.access == memory::MemoryAccess::Read) {
+            for (std::uint8_t& byte : request.data) {
+                byte = read_pattern;
+            }
+        }
+        return make_memory_result(true, memory::MemoryFault::None,
+                                  request.access, request.context, address,
+                                  request.data.size(), request.data.size());
+    }
+};
+
+void test_guest_address_helpers() {
+    using namespace xbridge::memory;
+
+    static_assert(!std::is_same_v<GuestVirtualAddress, GuestPhysicalAddress>);
+    static_assert(!std::is_convertible_v<GuestVirtualAddress, GuestPhysicalAddress>);
+    static_assert(!std::is_convertible_v<GuestPhysicalAddress, GuestVirtualAddress>);
+    static_assert(!std::is_convertible_v<std::uint64_t, GuestVirtualAddress>);
+    static_assert(!std::is_convertible_v<std::uint64_t, GuestPhysicalAddress>);
+    static_assert(!std::is_convertible_v<GuestVirtualAddress, std::uint64_t>);
+    static_assert(!std::is_convertible_v<GuestPhysicalAddress, std::uint64_t>);
+
+    constexpr GuestVirtualAddress virtual_a{0x1122334455667788ULL};
+    constexpr GuestVirtualAddress virtual_copy{0x1122334455667788ULL};
+    constexpr GuestVirtualAddress virtual_b{0x8877665544332211ULL};
+    constexpr GuestPhysicalAddress physical_a{0x1'0000'0000ULL};
+    constexpr GuestPhysicalAddress physical_copy{0x1'0000'0000ULL};
+    constexpr GuestPhysicalAddress physical_b{0x2'0000'0000ULL};
+
+    check(virtual_a == virtual_copy && virtual_a != virtual_b &&
+              !(virtual_a == virtual_b) && virtual_b == GuestVirtualAddress{0x8877665544332211ULL},
+          "guest virtual addresses are strong values with default equality");
+    check(physical_a == physical_copy && physical_a != physical_b &&
+              !(physical_a == physical_b) && physical_b == GuestPhysicalAddress{0x2'0000'0000ULL},
+          "guest physical addresses are strong values with default equality");
+
+    constexpr std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t end = 0xDEADBEEFULL;
+    check(checked_range_end(0x1000ULL, 0x20ULL, end) && end == 0x1020ULL,
+          "checked_range_end accepts an in-range 64-bit half-open interval");
+    end = 0xDEADBEEFULL;
+    check(checked_range_end(maximum, 0, end) && end == maximum,
+          "checked_range_end accepts a zero-length range at UINT64_MAX");
+    end = 0xDEADBEEFULL;
+    check(checked_range_end(0, maximum, end) && end == maximum,
+          "checked_range_end accepts the full non-overflowing range");
+    end = 0xDEADBEEFULL;
+    check(!checked_range_end(maximum, 1, end) && end == 0xDEADBEEFULL,
+          "checked_range_end rejects UINT64_MAX plus one without changing end");
+    end = 0xDEADBEEFULL;
+    check(!checked_range_end(maximum - 1ULL, 2, end) && end == 0xDEADBEEFULL,
+          "checked_range_end rejects a range crossing UINT64_MAX");
+    end = 0xDEADBEEFULL;
+    check(!checked_range_end(1, maximum, end) && end == 0xDEADBEEFULL,
+          "checked_range_end rejects an overflowing length from a low base");
+}
+
+void test_memory_result_contract() {
+    using namespace xbridge::memory;
+
+    const MemoryResult default_result{};
+    check(result_invariant(default_result) &&
+              !default_result.ok &&
+              !static_cast<bool>(default_result) &&
+              default_result.fault == MemoryFault::Unsupported &&
+              default_result.access == MemoryAccess::Read &&
+              default_result.context == MemoryAccessContext::Data &&
+              default_result.address == 0 &&
+              default_result.requested_length == 0 &&
+              default_result.completed_bytes == 0 &&
+              !default_result.translated_address.has_value() &&
+              !default_result.region_base.has_value(),
+          "MemoryResult defaults satisfy the ok/fault invariant and leave diagnostics safe");
+
+    check_named_result_helpers<MemoryResult>();
+}
+
+void test_guest_physical_memory_regions() {
+    using namespace xbridge::memory;
+
+    const MemoryPermissions all{true, true, true};
+    constexpr std::uint64_t base = 0x1'0000'0000ULL;
+    GuestPhysicalMemory physical;
+
+    const auto first = physical.add_region(GuestPhysicalAddress{base}, 64,
+                                           RegionKind::Normal, all);
+    check(result_matches(first, MemoryFault::None, base, 64) &&
+              result_invariant(first),
+          "GuestPhysicalMemory adds a normal region above 4 GiB");
+
+    const auto zero = physical.add_region(GuestPhysicalAddress{base + 128}, 0,
+                                          RegionKind::Normal, all);
+    check(!zero.ok && zero.fault == MemoryFault::InvalidRange &&
+              zero.completed_bytes == 0 && result_invariant(zero) &&
+              physical.region_at(GuestPhysicalAddress{base + 128}).length == 0,
+          "GuestPhysicalMemory rejects a zero-length region atomically");
+
+    constexpr std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max();
+    const auto overflow = physical.add_region(GuestPhysicalAddress{maximum - 3ULL}, 8,
+                                              RegionKind::Normal, all);
+    check(!overflow.ok && overflow.fault == MemoryFault::AddressOverflow &&
+              overflow.completed_bytes == 0 && result_invariant(overflow) &&
+              !physical.region_covers(GuestPhysicalAddress{maximum - 3ULL}, 1),
+          "GuestPhysicalMemory rejects a region whose end would overflow");
+
+    const auto overlap = physical.add_region(GuestPhysicalAddress{base + 16}, 16,
+                                             RegionKind::Normal, all);
+    check(!overlap.ok && overlap.fault == MemoryFault::InvalidRange &&
+              overlap.completed_bytes == 0 && result_invariant(overlap),
+          "GuestPhysicalMemory rejects an overlapping region");
+
+    const auto first_descriptor = physical.region_at(GuestPhysicalAddress{base});
+    const auto first_tail_descriptor = physical.region_at(GuestPhysicalAddress{base + 63});
+    check(first_descriptor.base.value == base && first_descriptor.length == 64 &&
+              first_descriptor.kind == RegionKind::Normal &&
+              first_descriptor.permissions.read && first_descriptor.permissions.write &&
+              first_descriptor.permissions.execute &&
+              first_tail_descriptor.base.value == base &&
+              first_tail_descriptor.length == 64,
+          "region_at reports the covering region descriptor inside its full range");
+    check(physical.region_covers(GuestPhysicalAddress{base}, 64) &&
+              physical.region_covers(GuestPhysicalAddress{base + 63}, 1) &&
+              !physical.region_covers(GuestPhysicalAddress{base}, 65) &&
+              !physical.region_covers(GuestPhysicalAddress{base + 63}, 2),
+          "region_covers enforces exact 64-bit half-open bounds");
+
+    const auto touching = physical.add_region(GuestPhysicalAddress{base + 64}, 16,
+                                              RegionKind::Normal, all);
+    check(touching.ok && touching.fault == MemoryFault::None &&
+              physical.region_at(GuestPhysicalAddress{base + 64}).base.value == base + 64 &&
+              physical.region_at(GuestPhysicalAddress{base + 64}).length == 16,
+          "GuestPhysicalMemory allows touching regions without overlap");
+
+    const auto unmapped = physical.region_at(GuestPhysicalAddress{base + 80});
+    check(unmapped.length == 0 && unmapped.kind == RegionKind::Reserved &&
+              !physical.region_covers(GuestPhysicalAddress{base + 80}, 1),
+          "region_at returns a Reserved zero-length descriptor for unmapped addresses");
+
+    constexpr std::uint64_t device_base = 0x2'0000'0000ULL;
+    constexpr std::uint64_t reserved_base = 0x3'0000'0000ULL;
+    const MemoryPermissions device_permissions{true, true, false};
+    check(physical.add_region(GuestPhysicalAddress{device_base}, 16,
+                              RegionKind::Device, device_permissions).ok &&
+              physical.add_region(GuestPhysicalAddress{reserved_base}, 16,
+                                  RegionKind::Reserved, all).ok,
+          "GuestPhysicalMemory records Device and Reserved regions");
+    const auto device_descriptor = physical.region_at(GuestPhysicalAddress{device_base});
+    const auto reserved_descriptor = physical.region_at(GuestPhysicalAddress{reserved_base});
+    check(device_descriptor.kind == RegionKind::Device &&
+              device_descriptor.base.value == device_base &&
+              device_descriptor.length == 16 &&
+              device_descriptor.permissions.read &&
+              device_descriptor.permissions.write &&
+              !device_descriptor.permissions.execute &&
+              reserved_descriptor.kind == RegionKind::Reserved &&
+              reserved_descriptor.base.value == reserved_base &&
+              reserved_descriptor.length == 16,
+          "region_at preserves Device and Reserved kinds and permissions");
+}
+
+void test_guest_physical_memory_accesses() {
+    using namespace xbridge::memory;
+
+    constexpr std::uint64_t base = 0x1'0000'0000ULL;
+    constexpr std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max();
+    GuestPhysicalMemory physical;
+    check(physical.add_region(GuestPhysicalAddress{base}, 16, RegionKind::Normal,
+                              MemoryPermissions{true, true, false}).ok,
+          "physical access fixture adds a writable region above 4 GiB");
+
+    std::array<std::uint8_t, 4> source{0x11, 0x22, 0x33, 0x44};
+    const auto write = physical.write(GuestPhysicalAddress{base + 4},
+                                      std::span<const std::uint8_t>(source),
+                                      MemoryAccessContext::Data);
+    check(data_result_matches(write, MemoryFault::None, base + 4, 4, 4) &&
+              write.access == MemoryAccess::Write &&
+              write.context == MemoryAccessContext::Data,
+          "physical write succeeds with exact completed-byte count");
+
+    std::array<std::uint8_t, 4> destination{};
+    const auto read = physical.read(GuestPhysicalAddress{base + 4},
+                                    std::span<std::uint8_t>(destination),
+                                    MemoryAccessContext::Data);
+    check(data_result_matches(read, MemoryFault::None, base + 4, 4, 4) &&
+              read.access == MemoryAccess::Read &&
+              read.context == MemoryAccessContext::Data &&
+              bytes_equal(destination, source),
+          "physical read returns the bytes written above 4 GiB");
+
+    std::array<std::uint8_t, 4> tail_source{0xAA, 0xBB, 0xCC, 0xDD};
+    const auto tail_write = physical.write(GuestPhysicalAddress{base + 12},
+                                           std::span<const std::uint8_t>(tail_source),
+                                           MemoryAccessContext::Bulk);
+    std::array<std::uint8_t, 4> tail_destination{};
+    const auto tail_read = physical.read(GuestPhysicalAddress{base + 12},
+                                         std::span<std::uint8_t>(tail_destination),
+                                         MemoryAccessContext::Bulk);
+    check(data_result_matches(tail_write, MemoryFault::None, base + 12, 4, 4) &&
+              data_result_matches(tail_read, MemoryFault::None, base + 12, 4, 4) &&
+              tail_write.context == MemoryAccessContext::Bulk &&
+              tail_read.context == MemoryAccessContext::Bulk &&
+              bytes_equal(tail_destination, tail_source),
+          "physical accesses ending exactly at the region boundary succeed");
+
+    const auto source_before_failure = source;
+    const auto failed_write = physical.write(GuestPhysicalAddress{base + 13},
+                                             std::span<const std::uint8_t>(source),
+                                             MemoryAccessContext::Data);
+    check(!failed_write.ok && failed_write.fault == MemoryFault::InvalidRange &&
+              failed_write.completed_bytes == 0 && result_invariant(failed_write) &&
+              source == source_before_failure,
+          "physical write crossing the region writes zero bytes and leaves source unchanged");
+
+    const auto destination_before_failure = destination;
+    const auto failed_read = physical.read(GuestPhysicalAddress{base + 13},
+                                           std::span<std::uint8_t>(destination),
+                                           MemoryAccessContext::Data);
+    check(!failed_read.ok && failed_read.fault == MemoryFault::InvalidRange &&
+              failed_read.completed_bytes == 0 && result_invariant(failed_read) &&
+              destination == destination_before_failure,
+          "physical read crossing the region leaves the destination unchanged");
+
+    constexpr std::uint64_t readonly_base = 0x2'0000'0000ULL;
+    constexpr std::uint64_t no_read_base = 0x3'0000'0000ULL;
+    constexpr std::uint64_t execute_only_base = 0x4'0000'0000ULL;
+    check(physical.add_region(GuestPhysicalAddress{readonly_base}, 8, RegionKind::Normal,
+                              MemoryPermissions{true, false, false}).ok &&
+              physical.add_region(GuestPhysicalAddress{no_read_base}, 8, RegionKind::Normal,
+                                  MemoryPermissions{false, true, false}).ok &&
+              physical.add_region(GuestPhysicalAddress{execute_only_base}, 8,
+                                  RegionKind::Normal,
+                                  MemoryPermissions{false, false, true}).ok,
+          "physical permission fixture adds read-only, write-only and execute-only regions");
+
+    std::array<std::uint8_t, 2> readonly_source{0x01, 0x02};
+    const auto readonly_source_before = readonly_source;
+    const auto denied_write = physical.write(GuestPhysicalAddress{readonly_base},
+                                             std::span<const std::uint8_t>(readonly_source),
+                                             MemoryAccessContext::Data);
+    check(!denied_write.ok && denied_write.fault == MemoryFault::AccessDenied &&
+              denied_write.completed_bytes == 0 && result_invariant(denied_write) &&
+              readonly_source == readonly_source_before,
+          "physical write respects region write permission");
+
+    std::array<std::uint8_t, 2> no_read_destination{0x5A, 0x5A};
+    const auto no_read_before = no_read_destination;
+    const auto denied_read = physical.read(GuestPhysicalAddress{no_read_base},
+                                           std::span<std::uint8_t>(no_read_destination),
+                                           MemoryAccessContext::Data);
+    check(!denied_read.ok && denied_read.fault == MemoryFault::AccessDenied &&
+              denied_read.completed_bytes == 0 && result_invariant(denied_read) &&
+              no_read_destination == no_read_before,
+          "physical read respects region read permission");
+
+    std::array<std::uint8_t, 2> execute_only_destination{0x11, 0x22};
+    const auto execute_only_before = execute_only_destination;
+    const auto execute_only_read = physical.read(GuestPhysicalAddress{execute_only_base},
+                                                 std::span<std::uint8_t>(execute_only_destination),
+                                                 MemoryAccessContext::Data);
+    check(!execute_only_read.ok &&
+              execute_only_read.fault == MemoryFault::AccessDenied &&
+              execute_only_read.completed_bytes == 0 &&
+              execute_only_destination == execute_only_before,
+          "physical data read does not inherit execute permission");
+
+    constexpr std::uint64_t unmapped_base = 0x9'0000'0000ULL;
+    std::array<std::uint8_t, 2> unmapped_destination{0x77, 0x88};
+    const auto unmapped_before = unmapped_destination;
+    const auto unmapped_read = physical.read(GuestPhysicalAddress{unmapped_base},
+                                             std::span<std::uint8_t>(unmapped_destination),
+                                             MemoryAccessContext::Data);
+    check(!unmapped_read.ok && unmapped_read.fault == MemoryFault::Unmapped &&
+              unmapped_read.completed_bytes == 0 && result_invariant(unmapped_read) &&
+              unmapped_destination == unmapped_before,
+          "physical access to an unmapped region reports Unmapped without mutation");
+
+    const auto zero_read = physical.read(GuestPhysicalAddress{unmapped_base},
+                                         std::span<std::uint8_t>{},
+                                         MemoryAccessContext::Data);
+    const auto zero_write = physical.write(GuestPhysicalAddress{maximum},
+                                           std::span<const std::uint8_t>{},
+                                           MemoryAccessContext::Bulk);
+    check(data_result_matches(zero_read, MemoryFault::None, unmapped_base, 0, 0) &&
+              zero_read.access == MemoryAccess::Read &&
+              zero_read.context == MemoryAccessContext::Data &&
+              data_result_matches(zero_write, MemoryFault::None, maximum, 0, 0) &&
+              zero_write.access == MemoryAccess::Write &&
+              zero_write.context == MemoryAccessContext::Bulk,
+          "zero-length physical data accesses succeed without translation or mutation");
+
+    constexpr std::uint64_t device_base = 0xA'0000'0000ULL;
+    constexpr std::uint64_t reserved_base = 0xB'0000'0000ULL;
+    check(physical.add_region(GuestPhysicalAddress{device_base}, 16, RegionKind::Device,
+                              MemoryPermissions{true, true, true}).ok &&
+              physical.add_region(GuestPhysicalAddress{reserved_base}, 16,
+                                  RegionKind::Reserved,
+                                  MemoryPermissions{true, true, true}).ok,
+          "physical access fixture adds Device and Reserved regions");
+
+    std::array<std::uint8_t, 2> device_destination{0x01, 0x02};
+    const auto device_destination_before = device_destination;
+    const auto device_read = physical.read(GuestPhysicalAddress{device_base + 2},
+                                           std::span<std::uint8_t>(device_destination),
+                                           MemoryAccessContext::Data);
+    std::array<std::uint8_t, 2> device_source{0x03, 0x04};
+    const auto device_source_before = device_source;
+    const auto device_write = physical.write(GuestPhysicalAddress{device_base + 2},
+                                             std::span<const std::uint8_t>(device_source),
+                                             MemoryAccessContext::Data);
+    check(!device_read.ok && device_read.fault == MemoryFault::DeviceAccessRequired &&
+              device_read.completed_bytes == 0 &&
+              device_destination == device_destination_before &&
+              !device_write.ok && device_write.fault == MemoryFault::DeviceAccessRequired &&
+              device_write.completed_bytes == 0 &&
+              device_source == device_source_before,
+          "ordinary physical Device accesses require dispatch and leave buffers unchanged");
+
+    std::array<std::uint8_t, 2> reserved_destination{0x99, 0x88};
+    const auto reserved_before = reserved_destination;
+    const auto reserved_read = physical.read(GuestPhysicalAddress{reserved_base},
+                                             std::span<std::uint8_t>(reserved_destination),
+                                             MemoryAccessContext::Data);
+    check(!reserved_read.ok && reserved_read.fault == MemoryFault::Unmapped &&
+              reserved_read.completed_bytes == 0 &&
+              reserved_destination == reserved_before,
+          "ordinary physical Reserved accesses fault as Unmapped");
+}
+
+void test_guest_physical_memory_commitment_boundary() {
+    using namespace xbridge::memory;
+
+    // Internal commitment granularity only; this is not a guest-visible page size.
+    constexpr std::uint64_t chunk_size = 4096U;
+    constexpr std::uint64_t base = 0x8'0000'0000ULL;
+    constexpr std::uint64_t crossing_address = base + chunk_size - 4U;
+    constexpr std::uint64_t crossing_length = 8U;
+
+    GuestPhysicalMemory physical;
+    check(physical.add_region(GuestPhysicalAddress{base},
+                              2U * chunk_size + crossing_length,
+                              RegionKind::Normal, MemoryPermissions{true, true, false}).ok,
+          "commitment-boundary fixture adds a Normal region spanning the internal chunk boundary");
+
+    const std::array<std::uint8_t, 8> pattern{0x11U, 0x22U, 0x33U, 0x44U,
+                                              0x55U, 0x66U, 0x77U, 0x88U};
+    const auto write = physical.write(GuestPhysicalAddress{crossing_address},
+                                      std::span<const std::uint8_t>(pattern),
+                                      MemoryAccessContext::Data);
+    check(data_result_matches(write, MemoryFault::None, crossing_address,
+                              crossing_length, crossing_length) &&
+              write.access == MemoryAccess::Write &&
+              write.context == MemoryAccessContext::Data,
+          "physical write spanning the internal commitment boundary reports all bytes completed");
+
+    std::array<std::uint8_t, 8> destination{};
+    const auto read = physical.read(GuestPhysicalAddress{crossing_address},
+                                    std::span<std::uint8_t>(destination),
+                                    MemoryAccessContext::Data);
+    check(data_result_matches(read, MemoryFault::None, crossing_address,
+                              crossing_length, crossing_length) &&
+              read.access == MemoryAccess::Read &&
+              read.context == MemoryAccessContext::Data &&
+              bytes_equal(destination, pattern) &&
+              destination == pattern,
+          "physical read spanning the internal commitment boundary returns the exact written pattern");
+}
+
+void test_guest_address_space_mapping_contract() {
+    using namespace xbridge::memory;
+
+    const MemoryPermissions all{true, true, true};
+    constexpr std::uint64_t physical_main = 0x1'0000'0000ULL;
+    constexpr std::uint64_t physical_touch = physical_main + 64;
+    constexpr std::uint64_t virtual_main = 0x2'0000'0000ULL;
+    constexpr std::uint64_t virtual_touch = virtual_main + 64;
+    constexpr std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max();
+
+    GuestPhysicalMemory physical;
+    check(physical.add_region(GuestPhysicalAddress{physical_main}, 64,
+                              RegionKind::Normal, all).ok &&
+              physical.add_region(GuestPhysicalAddress{physical_touch}, 16,
+                                  RegionKind::Normal, all).ok,
+          "address-space mapping fixture adds adjacent physical regions");
+
+    GuestAddressSpace space(physical);
+    const auto mapped = space.map(GuestVirtualAddress{virtual_main},
+                                  GuestPhysicalAddress{physical_main}, 64, all);
+    check(result_matches(mapped, MemoryFault::None, virtual_main, 64) &&
+              mapped.context == MemoryAccessContext::Map &&
+              result_invariant(mapped),
+          "map succeeds for a range covered by one physical region");
+
+    GuestPhysicalAddress translated{0};
+    const auto translation = space.translate(GuestVirtualAddress{virtual_main + 8}, 8,
+                                             MemoryAccess::Read,
+                                             MemoryAccessContext::Data, translated);
+    check(data_result_matches(translation, MemoryFault::None, virtual_main + 8, 8, 8) &&
+              translation.access == MemoryAccess::Read &&
+              translation.context == MemoryAccessContext::Data &&
+              translated.value == physical_main + 8 &&
+              optional_equals(translation.translated_address, physical_main + 8) &&
+              optional_equals(translation.region_base, physical_main),
+          "translate reports the physical address and region base for a valid range");
+
+    const auto touched = space.map(GuestVirtualAddress{virtual_touch},
+                                   GuestPhysicalAddress{physical_touch}, 16, all);
+    GuestPhysicalAddress touch_translated{0};
+    const auto touch_translation = space.translate(GuestVirtualAddress{virtual_touch}, 1,
+                                                   MemoryAccess::Write,
+                                                   MemoryAccessContext::Data,
+                                                   touch_translated);
+    check(touched.ok && touched.context == MemoryAccessContext::Map &&
+              touch_translation.ok && touch_translated.value == physical_touch,
+          "touching virtual mappings and regions are allowed");
+
+    const auto zero_map = space.map(GuestVirtualAddress{virtual_main + 128},
+                                    GuestPhysicalAddress{physical_main}, 0, all);
+    check(!zero_map.ok && zero_map.fault == MemoryFault::InvalidRange &&
+              zero_map.completed_bytes == 0 && result_invariant(zero_map),
+          "map rejects a zero-length range");
+
+    const auto overflow_map = space.map(GuestVirtualAddress{maximum - 3ULL},
+                                        GuestPhysicalAddress{physical_main}, 8, all);
+    check(!overflow_map.ok && overflow_map.fault == MemoryFault::AddressOverflow &&
+              overflow_map.completed_bytes == 0 && result_invariant(overflow_map),
+          "map rejects a virtual range that overflows 64 bits");
+
+    GuestPhysicalAddress before_overlap{0};
+    check(space.translate(GuestVirtualAddress{virtual_main + 8}, 1, MemoryAccess::Read,
+                          MemoryAccessContext::Data, before_overlap).ok,
+          "mapping fixture translates the range used for overlap regression");
+    const auto overlap = space.map(GuestVirtualAddress{virtual_main + 8},
+                                   GuestPhysicalAddress{physical_touch}, 8, all);
+    GuestPhysicalAddress after_overlap{0};
+    const auto overlap_state = space.translate(GuestVirtualAddress{virtual_main + 8}, 1,
+                                               MemoryAccess::Read,
+                                               MemoryAccessContext::Data, after_overlap);
+    check(!overlap.ok && overlap.fault == MemoryFault::InvalidRange &&
+              overlap.completed_bytes == 0 && result_invariant(overlap) &&
+              overlap_state.ok && after_overlap.value == before_overlap.value,
+          "overlapping map fails atomically and preserves the previous mapping");
+
+    const auto alias = space.map(GuestVirtualAddress{virtual_main + 128},
+                                 GuestPhysicalAddress{physical_main + 4}, 8, all);
+    GuestPhysicalAddress alias_translated{0};
+    const auto alias_state = space.translate(GuestVirtualAddress{virtual_main + 128}, 1,
+                                             MemoryAccess::Read,
+                                             MemoryAccessContext::Data, alias_translated);
+    check(!alias.ok && alias.fault == MemoryFault::InvalidRange &&
+              alias.completed_bytes == 0 && result_invariant(alias) &&
+              !alias_state.ok && alias_state.fault == MemoryFault::Unmapped &&
+              alias_translated.value == 0,
+          "physical alias mapping is rejected without inserting a virtual mapping");
+
+    const auto uncovered = space.map(GuestVirtualAddress{virtual_main + 192},
+                                     GuestPhysicalAddress{physical_main + 60}, 8, all);
+    GuestPhysicalAddress uncovered_translated{0};
+    const auto uncovered_state = space.translate(GuestVirtualAddress{virtual_main + 192}, 1,
+                                                 MemoryAccess::Read,
+                                                 MemoryAccessContext::Data,
+                                                 uncovered_translated);
+    check(!uncovered.ok && uncovered.fault == MemoryFault::Unmapped &&
+              uncovered.completed_bytes == 0 && result_invariant(uncovered) &&
+              !uncovered_state.ok && uncovered_translated.value == 0,
+          "map rejects a physical range not covered by exactly one region");
+
+    constexpr std::uint64_t adjacent_first = 0x3'0000'0000ULL;
+    constexpr std::uint64_t adjacent_second = adjacent_first + 16;
+    check(physical.add_region(GuestPhysicalAddress{adjacent_first}, 16,
+                              RegionKind::Normal, all).ok &&
+              physical.add_region(GuestPhysicalAddress{adjacent_second}, 16,
+                                  RegionKind::Normal, all).ok,
+          "mapping fixture adds two adjacent physical regions");
+    const auto across_regions = space.map(GuestVirtualAddress{virtual_main + 256},
+                                          GuestPhysicalAddress{adjacent_first}, 32, all);
+    check(!across_regions.ok && across_regions.completed_bytes == 0 &&
+              result_invariant(across_regions),
+          "map rejects a physical range spanning two adjacent regions");
+
+    const auto unknown_unmap = space.unmap(GuestVirtualAddress{virtual_main + 320}, 64);
+    check(!unknown_unmap.ok && unknown_unmap.fault == MemoryFault::Unmapped &&
+              unknown_unmap.context == MemoryAccessContext::Unmap &&
+              result_invariant(unknown_unmap),
+          "unmap of an unknown virtual base fails without mutation");
+
+    const auto mismatched_unmap = space.unmap(GuestVirtualAddress{virtual_main}, 32);
+    GuestPhysicalAddress after_failed_unmap{0};
+    const auto preserved = space.translate(GuestVirtualAddress{virtual_main}, 1,
+                                           MemoryAccess::Read,
+                                           MemoryAccessContext::Data, after_failed_unmap);
+    check(!mismatched_unmap.ok &&
+              mismatched_unmap.fault == MemoryFault::Unmapped &&
+              mismatched_unmap.context == MemoryAccessContext::Unmap &&
+              result_invariant(mismatched_unmap) &&
+              preserved.ok && after_failed_unmap.value == physical_main,
+          "unmap with a mismatched length fails atomically");
+
+    const auto removed = space.unmap(GuestVirtualAddress{virtual_main}, 64);
+    GuestPhysicalAddress after_removed{0};
+    const auto removed_translation = space.translate(GuestVirtualAddress{virtual_main}, 1,
+                                                     MemoryAccess::Read,
+                                                     MemoryAccessContext::Data,
+                                                     after_removed);
+    GuestPhysicalAddress touch_after_removal{0};
+    check(removed.ok && removed.fault == MemoryFault::None &&
+              removed.context == MemoryAccessContext::Unmap &&
+              result_invariant(removed) &&
+              !removed_translation.ok &&
+              removed_translation.fault == MemoryFault::Unmapped &&
+              after_removed.value == 0 &&
+              space.translate(GuestVirtualAddress{virtual_touch}, 1, MemoryAccess::Read,
+                              MemoryAccessContext::Data,
+                              touch_after_removal).ok &&
+              touch_after_removal.value == physical_touch,
+          "exact-base and exact-length unmap removes only the selected mapping");
+}
+
+void test_guest_address_space_permissions_and_fetch() {
+    using namespace xbridge::memory;
+
+    constexpr std::uint64_t physical_execute = 0x1'0000'0000ULL;
+    constexpr std::uint64_t physical_rwx = 0x2'0000'0000ULL;
+    constexpr std::uint64_t physical_no_execute = 0x3'0000'0000ULL;
+    constexpr std::uint64_t physical_no_read = 0x4'0000'0000ULL;
+    constexpr std::uint64_t physical_readonly = 0x5'0000'0000ULL;
+    constexpr std::uint64_t physical_no_write = 0x6'0000'0000ULL;
+    constexpr std::uint64_t physical_cross_first = 0x7'0000'0000ULL;
+    constexpr std::uint64_t physical_cross_second = physical_cross_first + 8;
+    constexpr std::uint64_t virtual_execute = 0xA'0000'0000ULL;
+    constexpr std::uint64_t virtual_rwx = 0xB'0000'0000ULL;
+    constexpr std::uint64_t virtual_no_execute = 0xC'0000'0000ULL;
+    constexpr std::uint64_t virtual_no_read = 0xD'0000'0000ULL;
+    constexpr std::uint64_t virtual_readonly = 0xE'0000'0000ULL;
+    constexpr std::uint64_t virtual_no_write = 0xF'0000'0000ULL;
+    constexpr std::uint64_t virtual_cross_first = 0x10'0000'0000ULL;
+    constexpr std::uint64_t virtual_cross_second = virtual_cross_first + 8;
+    constexpr std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max();
+
+    GuestPhysicalMemory physical;
+    check(physical.add_region(GuestPhysicalAddress{physical_execute}, 16, RegionKind::Normal,
+                              MemoryPermissions{false, true, true}).ok &&
+              physical.add_region(GuestPhysicalAddress{physical_rwx}, 16, RegionKind::Normal,
+                                  MemoryPermissions{true, true, true}).ok &&
+              physical.add_region(GuestPhysicalAddress{physical_no_execute}, 16,
+                                  RegionKind::Normal,
+                                  MemoryPermissions{true, true, false}).ok &&
+              physical.add_region(GuestPhysicalAddress{physical_no_read}, 16,
+                                  RegionKind::Normal,
+                                  MemoryPermissions{false, false, true}).ok &&
+              physical.add_region(GuestPhysicalAddress{physical_readonly}, 16,
+                                  RegionKind::Normal,
+                                  MemoryPermissions{true, true, false}).ok &&
+              physical.add_region(GuestPhysicalAddress{physical_no_write}, 16,
+                                  RegionKind::Normal,
+                                  MemoryPermissions{true, false, false}).ok &&
+              physical.add_region(GuestPhysicalAddress{physical_cross_first}, 8,
+                                  RegionKind::Normal,
+                                  MemoryPermissions{false, true, true}).ok &&
+              physical.add_region(GuestPhysicalAddress{physical_cross_second}, 8,
+                                  RegionKind::Normal,
+                                  MemoryPermissions{false, true, true}).ok,
+          "permission fixture adds physical regions with independent read, write and execute bits");
+
+    GuestAddressSpace space(physical);
+    check(space.map(GuestVirtualAddress{virtual_execute},
+                    GuestPhysicalAddress{physical_execute}, 16,
+                    MemoryPermissions{false, false, true}).ok &&
+              space.map(GuestVirtualAddress{virtual_rwx},
+                        GuestPhysicalAddress{physical_rwx}, 16,
+                        MemoryPermissions{true, true, false}).ok &&
+              space.map(GuestVirtualAddress{virtual_no_execute},
+                        GuestPhysicalAddress{physical_no_execute}, 16,
+                        MemoryPermissions{false, false, true}).ok &&
+              space.map(GuestVirtualAddress{virtual_no_read},
+                        GuestPhysicalAddress{physical_no_read}, 16,
+                        MemoryPermissions{true, true, true}).ok &&
+              space.map(GuestVirtualAddress{virtual_readonly},
+                        GuestPhysicalAddress{physical_readonly}, 16,
+                        MemoryPermissions{true, false, false}).ok &&
+              space.map(GuestVirtualAddress{virtual_no_write},
+                        GuestPhysicalAddress{physical_no_write}, 16,
+                        MemoryPermissions{true, true, false}).ok &&
+              space.map(GuestVirtualAddress{virtual_cross_first},
+                        GuestPhysicalAddress{physical_cross_first}, 8,
+                        MemoryPermissions{false, false, true}).ok &&
+              space.map(GuestVirtualAddress{virtual_cross_second},
+                        GuestPhysicalAddress{physical_cross_second}, 8,
+                        MemoryPermissions{false, false, true}).ok,
+          "permission fixture adds mappings with independent read, write and execute bits");
+
+    std::array<std::uint8_t, 15> fetch_source{};
+    for (std::size_t index = 0; index < fetch_source.size(); ++index) {
+        fetch_source[index] = static_cast<std::uint8_t>(0x10U + index);
+    }
+    check(physical.write(GuestPhysicalAddress{physical_execute},
+                         std::span<const std::uint8_t>(fetch_source),
+                         MemoryAccessContext::Bulk).ok,
+          "execute fixture seeds fetch bytes through the physical write permission");
+
+    std::array<std::uint8_t, 4> fetch_destination{};
+    const auto fetch_ok = space.fetch(GuestVirtualAddress{virtual_execute},
+                                      std::span<std::uint8_t>(fetch_destination));
+    check(data_result_matches(fetch_ok, MemoryFault::None, virtual_execute, 4, 4) &&
+              fetch_ok.access == MemoryAccess::Execute &&
+              fetch_ok.context == MemoryAccessContext::Fetch &&
+              bytes_equal(fetch_destination,
+                          std::span<const std::uint8_t>(fetch_source.data(), 4)),
+          "execute-only mapping fetches successfully without read permission");
+
+    std::array<std::uint8_t, 15> full_fetch_destination{};
+    const auto full_fetch = space.fetch(GuestVirtualAddress{virtual_execute},
+                                        std::span<std::uint8_t>(full_fetch_destination));
+    check(full_fetch.ok && full_fetch.fault == MemoryFault::None &&
+              full_fetch.completed_bytes == 15 &&
+              full_fetch.context == MemoryAccessContext::Fetch &&
+              bytes_equal(full_fetch_destination, fetch_source),
+          "15-byte fetch succeeds at the implementation window boundary");
+
+    std::array<std::uint8_t, 16> oversized_fetch{};
+    const auto oversized_before = oversized_fetch;
+    const auto too_long = space.fetch(GuestVirtualAddress{virtual_execute},
+                                      std::span<std::uint8_t>(oversized_fetch));
+    check(!too_long.ok && too_long.fault == MemoryFault::InvalidRange &&
+              too_long.completed_bytes == 0 && result_invariant(too_long) &&
+              oversized_fetch == oversized_before,
+          "16-byte fetch is rejected without touching the destination");
+
+    const auto empty_fetch = space.fetch(GuestVirtualAddress{virtual_execute},
+                                         std::span<std::uint8_t>{});
+    check(!empty_fetch.ok && empty_fetch.fault == MemoryFault::InvalidRange &&
+              empty_fetch.requested_length == 0 && empty_fetch.completed_bytes == 0 &&
+              result_invariant(empty_fetch),
+          "zero-length fetch is rejected as an invalid instruction window");
+
+    std::array<std::uint8_t, 4> denied_fetch_destination{0x11, 0x22, 0x33, 0x44};
+    const auto denied_fetch_before = denied_fetch_destination;
+    const auto mapping_no_execute = space.fetch(GuestVirtualAddress{virtual_rwx},
+                                                std::span<std::uint8_t>(denied_fetch_destination));
+    check(!mapping_no_execute.ok &&
+              mapping_no_execute.fault == MemoryFault::AccessDenied &&
+              mapping_no_execute.completed_bytes == 0 &&
+              result_invariant(mapping_no_execute) &&
+              denied_fetch_destination == denied_fetch_before,
+          "read/write mapping permission does not grant fetch even when the region permits execute");
+
+    const auto region_no_execute = space.fetch(GuestVirtualAddress{virtual_no_execute},
+                                               std::span<std::uint8_t>(denied_fetch_destination));
+    check(!region_no_execute.ok &&
+              region_no_execute.fault == MemoryFault::AccessDenied &&
+              region_no_execute.completed_bytes == 0 &&
+              denied_fetch_destination == denied_fetch_before,
+          "execute mapping permission does not override a region without execute permission");
+
+    std::array<std::uint8_t, 4> data_destination{0xAA, 0xBB, 0xCC, 0xDD};
+    const auto data_before = data_destination;
+    const auto execute_is_not_read = space.read(GuestVirtualAddress{virtual_execute},
+                                                std::span<std::uint8_t>(data_destination));
+    check(!execute_is_not_read.ok &&
+              execute_is_not_read.fault == MemoryFault::AccessDenied &&
+              execute_is_not_read.completed_bytes == 0 &&
+              data_destination == data_before,
+          "execute permission does not imply data-read permission on the mapping");
+
+    const auto region_is_not_read = space.read(GuestVirtualAddress{virtual_no_read},
+                                               std::span<std::uint8_t>(data_destination));
+    check(!region_is_not_read.ok &&
+              region_is_not_read.fault == MemoryFault::AccessDenied &&
+              region_is_not_read.completed_bytes == 0 &&
+              data_destination == data_before,
+          "a mapping with read permission cannot bypass a region without read permission");
+
+    const std::array<std::uint8_t, 4> zero_bytes{};
+    std::array<std::uint8_t, 4> mapping_write_source{0xDE, 0xAD, 0xBE, 0xEF};
+    const auto mapping_write_before = mapping_write_source;
+    const auto mapping_write_denied = space.write(GuestVirtualAddress{virtual_readonly},
+                                                  std::span<const std::uint8_t>(mapping_write_source));
+    std::array<std::uint8_t, 4> readonly_verify{};
+    const auto readonly_state = physical.read(GuestPhysicalAddress{physical_readonly},
+                                              std::span<std::uint8_t>(readonly_verify),
+                                              MemoryAccessContext::Data);
+    check(!mapping_write_denied.ok &&
+              mapping_write_denied.fault == MemoryFault::AccessDenied &&
+              mapping_write_denied.completed_bytes == 0 &&
+              mapping_write_source == mapping_write_before &&
+              readonly_state.ok && bytes_equal(readonly_verify, zero_bytes),
+          "mapping write denial writes zero bytes and leaves physical backing unchanged");
+
+    std::array<std::uint8_t, 4> region_write_source{0x01, 0x02, 0x03, 0x04};
+    const auto region_write_before = region_write_source;
+    const auto region_write_denied = space.write(GuestVirtualAddress{virtual_no_write},
+                                                 std::span<const std::uint8_t>(region_write_source));
+    std::array<std::uint8_t, 4> no_write_verify{0x55, 0x55, 0x55, 0x55};
+    const auto no_write_state = space.read(GuestVirtualAddress{virtual_no_write},
+                                           std::span<std::uint8_t>(no_write_verify));
+    check(!region_write_denied.ok &&
+              region_write_denied.fault == MemoryFault::AccessDenied &&
+              region_write_denied.completed_bytes == 0 &&
+              region_write_source == region_write_before &&
+              no_write_state.ok && bytes_equal(no_write_verify, zero_bytes),
+          "region write denial writes zero bytes and cannot be bypassed by mapping permissions");
+
+    std::array<std::uint8_t, 9> cross_fetch_destination{0x77, 0x77, 0x77, 0x77,
+                                                        0x77, 0x77, 0x77, 0x77, 0x77};
+    const auto cross_fetch_before = cross_fetch_destination;
+    const auto cross_fetch = space.fetch(GuestVirtualAddress{virtual_cross_first},
+                                         std::span<std::uint8_t>(cross_fetch_destination));
+    check(!cross_fetch.ok && cross_fetch.completed_bytes == 0 &&
+              result_invariant(cross_fetch) &&
+              cross_fetch_destination == cross_fetch_before,
+          "fetch spanning two executable mappings or regions is rejected atomically");
+
+    std::array<std::uint8_t, 1> overflow_destination{0x5A};
+    const auto overflow_before = overflow_destination;
+    const auto overflow_fetch = space.fetch(GuestVirtualAddress{maximum},
+                                            std::span<std::uint8_t>(overflow_destination));
+    check(!overflow_fetch.ok &&
+              overflow_fetch.fault == MemoryFault::AddressOverflow &&
+              overflow_fetch.completed_bytes == 0 &&
+              overflow_destination == overflow_before,
+          "fetch at UINT64_MAX reports AddressOverflow without mutation");
+}
+
+void test_guest_address_space_device_dispatch() {
+    using namespace xbridge::memory;
+
+    constexpr std::uint64_t physical_device = 0x1'0000'0000ULL;
+    constexpr std::uint64_t virtual_device = 0xB'0000'0000ULL;
+    constexpr std::uint64_t physical_normal = 0x2'0000'0000ULL;
+
+    GuestPhysicalMemory physical;
+    check(physical.add_region(GuestPhysicalAddress{physical_device}, 16, RegionKind::Device,
+                              MemoryPermissions{true, true, true}).ok,
+          "device dispatch fixture adds a device region");
+    GuestAddressSpace space(physical);
+    check(space.map(GuestVirtualAddress{virtual_device},
+                    GuestPhysicalAddress{physical_device}, 16,
+                    MemoryPermissions{true, true, true}).ok,
+          "device dispatch fixture maps the device region");
+
+    RecordingDeviceDispatcher dispatcher;
+    space.set_device_dispatcher(&dispatcher);
+
+    std::array<std::uint8_t, 4> read_destination{};
+    const auto dispatched_read = space.read(GuestVirtualAddress{virtual_device + 8},
+                                            std::span<std::uint8_t>(read_destination));
+    const std::array<std::uint8_t, 4> pattern{0xC3, 0xC3, 0xC3, 0xC3};
+    check(dispatched_read.ok && dispatched_read.fault == MemoryFault::None &&
+              dispatched_read.access == MemoryAccess::Read &&
+              dispatched_read.context == MemoryAccessContext::DeviceDispatch &&
+              dispatched_read.completed_bytes == 4 &&
+              dispatcher.calls == 1 &&
+              dispatcher.last_region_base.value == physical_device &&
+              dispatcher.last_offset == 8 &&
+              dispatcher.last_access == MemoryAccess::Read &&
+              dispatcher.last_context == MemoryAccessContext::DeviceDispatch &&
+              dispatcher.last_data_size == 4 &&
+              bytes_equal(read_destination, pattern),
+          "device read dispatches the region base, offset, access, context and data");
+
+    std::array<std::uint8_t, 4> write_source{0xDE, 0xAD, 0xBE, 0xEF};
+    const auto dispatched_write = space.write(GuestVirtualAddress{virtual_device + 4},
+                                              std::span<const std::uint8_t>(write_source));
+    check(dispatched_write.ok && dispatched_write.fault == MemoryFault::None &&
+              dispatched_write.access == MemoryAccess::Write &&
+              dispatched_write.context == MemoryAccessContext::DeviceDispatch &&
+              dispatched_write.completed_bytes == 4 &&
+              dispatcher.calls == 2 &&
+              dispatcher.last_region_base.value == physical_device &&
+              dispatcher.last_offset == 4 &&
+              dispatcher.last_access == MemoryAccess::Write &&
+              dispatcher.last_context == MemoryAccessContext::DeviceDispatch &&
+              dispatcher.last_data_size == 4 &&
+              bytes_equal(std::span<const std::uint8_t>(dispatcher.last_data.data(),
+                                                        dispatcher.last_data_size),
+                          write_source),
+          "device write dispatches the source bytes with correct diagnostics");
+
+    space.set_device_dispatcher(nullptr);
+    std::array<std::uint8_t, 4> unbound_destination{0x11, 0x22, 0x33, 0x44};
+    const auto unbound_before = unbound_destination;
+    const auto unbound = space.read(GuestVirtualAddress{virtual_device},
+                                    std::span<std::uint8_t>(unbound_destination));
+    check(!unbound.ok && unbound.fault == MemoryFault::DeviceAccessRequired &&
+              unbound.completed_bytes == 0 && result_invariant(unbound) &&
+              unbound_destination == unbound_before,
+          "device access without a dispatcher reports DeviceAccessRequired without mutation");
+
+    dispatcher.fail = true;
+    dispatcher.calls = 0;
+    space.set_device_dispatcher(&dispatcher);
+    std::array<std::uint8_t, 4> failed_destination{0x5A, 0x5A, 0x5A, 0x5A};
+    const auto failed_before = failed_destination;
+    const auto failed_read = space.read(GuestVirtualAddress{virtual_device},
+                                        std::span<std::uint8_t>(failed_destination));
+    check(!failed_read.ok && failed_read.fault == MemoryFault::Unsupported &&
+              failed_read.completed_bytes == 0 && result_invariant(failed_read) &&
+              dispatcher.calls == 1 && failed_destination == failed_before,
+          "failed dispatch leaves the destination buffer unchanged");
+
+    std::array<std::uint8_t, 4> failed_write_source{0x01, 0x02, 0x03, 0x04};
+    const auto failed_write_before = failed_write_source;
+    const auto calls_before_failed_write = dispatcher.calls;
+    const auto failed_write = space.write(GuestVirtualAddress{virtual_device},
+                                          std::span<const std::uint8_t>(failed_write_source));
+    check(!failed_write.ok && failed_write.completed_bytes == 0 &&
+              result_invariant(failed_write) &&
+              dispatcher.calls == calls_before_failed_write + 1 &&
+              failed_write_source == failed_write_before,
+          "failed device write reports zero completed bytes and leaves source unchanged");
+
+    dispatcher.fail = false;
+    dispatcher.calls = 0;
+    std::array<std::uint8_t, 4> fetch_destination{0x77, 0x77, 0x77, 0x77};
+    const auto fetch_before = fetch_destination;
+    const auto device_fetch = space.fetch(GuestVirtualAddress{virtual_device},
+                                          std::span<std::uint8_t>(fetch_destination));
+    check(!device_fetch.ok && device_fetch.completed_bytes == 0 &&
+              result_invariant(device_fetch) &&
+              dispatcher.calls == 0 && fetch_destination == fetch_before,
+          "fetch from a Device region is rejected before any device dispatch");
+
+    check(physical.add_region(GuestPhysicalAddress{physical_normal}, 8, RegionKind::Normal,
+                              MemoryPermissions{true, true, false}).ok &&
+              space.map(GuestVirtualAddress{virtual_device - 8},
+                        GuestPhysicalAddress{physical_normal}, 8,
+                        MemoryPermissions{true, true, false}).ok,
+          "mixed bulk fixture maps a Normal region adjacent to the Device mapping");
+
+    std::array<std::uint8_t, 16> mixed_destination{};
+    const auto mixed_before = mixed_destination;
+    const auto calls_before_mixed = dispatcher.calls;
+    const auto mixed = space.read(GuestVirtualAddress{virtual_device - 8},
+                                  std::span<std::uint8_t>(mixed_destination));
+    check(!mixed.ok && mixed.completed_bytes == 0 && result_invariant(mixed) &&
+              dispatcher.calls == calls_before_mixed &&
+              mixed_destination == mixed_before,
+          "bulk access spanning Normal and Device mappings is rejected before dispatch");
+}
+
+void test_guest_address_space_atomicity_and_boundaries() {
+    using namespace xbridge::memory;
+
+    constexpr std::uint64_t physical_first = 0x1'0000'0000ULL;
+    constexpr std::uint64_t physical_second = physical_first + 8;
+    constexpr std::uint64_t virtual_first = 0xD'0000'0000ULL;
+    constexpr std::uint64_t virtual_second = virtual_first + 8;
+    constexpr std::uint64_t physical_readonly = 0x2'0000'0000ULL;
+    constexpr std::uint64_t virtual_readonly = 0xE'0000'0000ULL;
+    constexpr std::uint64_t maximum = std::numeric_limits<std::uint64_t>::max();
+
+    GuestPhysicalMemory physical;
+    check(physical.add_region(GuestPhysicalAddress{physical_first}, 8, RegionKind::Normal,
+                              MemoryPermissions{true, true, false}).ok &&
+              physical.add_region(GuestPhysicalAddress{physical_second}, 8, RegionKind::Normal,
+                                  MemoryPermissions{true, true, false}).ok &&
+              physical.add_region(GuestPhysicalAddress{physical_readonly}, 8, RegionKind::Normal,
+                                  MemoryPermissions{true, true, false}).ok,
+          "atomicity fixture adds touching physical regions above 4 GiB");
+
+    GuestAddressSpace space(physical);
+    check(space.map(GuestVirtualAddress{virtual_first},
+                    GuestPhysicalAddress{physical_first}, 8,
+                    MemoryPermissions{true, true, false}).ok &&
+              space.map(GuestVirtualAddress{virtual_second},
+                        GuestPhysicalAddress{physical_second}, 8,
+                        MemoryPermissions{true, true, false}).ok &&
+              space.map(GuestVirtualAddress{virtual_readonly},
+                        GuestPhysicalAddress{physical_readonly}, 8,
+                        MemoryPermissions{true, false, false}).ok,
+          "atomicity fixture maps touching virtual ranges and a read-only range");
+
+    std::array<std::uint8_t, 4> first_source{0x01, 0x02, 0x03, 0x04};
+    std::array<std::uint8_t, 4> second_source{0x05, 0x06, 0x07, 0x08};
+    check(space.write(GuestVirtualAddress{virtual_first},
+                      std::span<const std::uint8_t>(first_source)).ok &&
+              space.write(GuestVirtualAddress{virtual_second},
+                          std::span<const std::uint8_t>(second_source)).ok,
+          "writes to touching mappings above 4 GiB succeed independently");
+
+    std::array<std::uint8_t, 8> first_backing{};
+    std::array<std::uint8_t, 8> second_backing{};
+    check(physical.read(GuestPhysicalAddress{physical_first},
+                        std::span<std::uint8_t>(first_backing),
+                        MemoryAccessContext::Data).ok &&
+              physical.read(GuestPhysicalAddress{physical_second},
+                            std::span<std::uint8_t>(second_backing),
+                            MemoryAccessContext::Data).ok &&
+              bytes_equal(std::span<const std::uint8_t>(first_backing.data(), 4), first_source) &&
+              bytes_equal(std::span<const std::uint8_t>(second_backing.data(), 4), second_source),
+          "no 64-to-32 truncation occurs for successful accesses above 4 GiB");
+
+    std::array<std::uint8_t, 16> spanning_source{};
+    for (std::uint8_t& byte : spanning_source) {
+        byte = 0xA5;
+    }
+    const auto spanning_write = space.write(GuestVirtualAddress{virtual_first},
+                                            std::span<const std::uint8_t>(spanning_source));
+    std::array<std::uint8_t, 8> first_after_span{};
+    std::array<std::uint8_t, 8> second_after_span{};
+    check(physical.read(GuestPhysicalAddress{physical_first},
+                        std::span<std::uint8_t>(first_after_span),
+                        MemoryAccessContext::Data).ok &&
+              physical.read(GuestPhysicalAddress{physical_second},
+                            std::span<std::uint8_t>(second_after_span),
+                            MemoryAccessContext::Data).ok,
+          "spanning-write regression reads both backing regions");
+    check(!spanning_write.ok && spanning_write.completed_bytes == 0 &&
+              result_invariant(spanning_write) &&
+              first_after_span == first_backing && second_after_span == second_backing,
+          "bulk write spanning two mappings or regions writes zero bytes");
+
+    std::array<std::uint8_t, 16> spanning_destination{};
+    const auto spanning_before = spanning_destination;
+    const auto spanning_read = space.read(GuestVirtualAddress{virtual_first},
+                                          std::span<std::uint8_t>(spanning_destination));
+    check(!spanning_read.ok && spanning_read.completed_bytes == 0 &&
+              result_invariant(spanning_read) &&
+              spanning_destination == spanning_before,
+          "bulk read spanning two mappings or regions leaves the destination unchanged");
+
+    const std::array<std::uint8_t, 4> zero_bytes{};
+    std::array<std::uint8_t, 4> scalar_source{0xDE, 0xAD, 0xBE, 0xEF};
+    const auto scalar_before = scalar_source;
+    const auto scalar_denied = space.write(GuestVirtualAddress{virtual_readonly},
+                                           std::span<const std::uint8_t>(scalar_source));
+    std::array<std::uint8_t, 4> readonly_backing{};
+    const auto readonly_state = physical.read(GuestPhysicalAddress{physical_readonly},
+                                              std::span<std::uint8_t>(readonly_backing),
+                                              MemoryAccessContext::Data);
+    check(!scalar_denied.ok && scalar_denied.fault == MemoryFault::AccessDenied &&
+              scalar_denied.completed_bytes == 0 && result_invariant(scalar_denied) &&
+              scalar_source == scalar_before && readonly_state.ok &&
+              bytes_equal(readonly_backing, zero_bytes),
+          "failed scalar virtual write writes zero bytes into physical backing");
+
+    std::array<std::uint8_t, 2> noop_destination{0x11, 0x22};
+    const auto noop_before = noop_destination;
+    const auto zero_read = space.read(GuestVirtualAddress{0xF'0000'0000ULL},
+                                      std::span<std::uint8_t>(noop_destination).first(0));
+    const auto zero_write = space.write(GuestVirtualAddress{maximum},
+                                        std::span<const std::uint8_t>{});
+    check(data_result_matches(zero_read, MemoryFault::None, 0xF'0000'0000ULL, 0, 0) &&
+              zero_read.access == MemoryAccess::Read &&
+              zero_read.context == MemoryAccessContext::Data &&
+              data_result_matches(zero_write, MemoryFault::None, maximum, 0, 0) &&
+              zero_write.access == MemoryAccess::Write &&
+              zero_write.context == MemoryAccessContext::Data &&
+              noop_destination == noop_before,
+          "zero-length virtual data accesses succeed at unmapped and maximum addresses");
+
+    std::array<std::uint8_t, 1> overflow_destination{0x5A};
+    const auto overflow_destination_before = overflow_destination;
+    const auto overflow_read = space.read(GuestVirtualAddress{maximum},
+                                          std::span<std::uint8_t>(overflow_destination));
+    std::array<std::uint8_t, 1> overflow_source{0x5A};
+    const auto overflow_source_before = overflow_source;
+    const auto overflow_write = space.write(GuestVirtualAddress{maximum},
+                                            std::span<const std::uint8_t>(overflow_source));
+    GuestPhysicalAddress overflow_translated{0x1234};
+    const auto overflow_translation = space.translate(GuestVirtualAddress{maximum}, 1,
+                                                      MemoryAccess::Read,
+                                                      MemoryAccessContext::Data,
+                                                      overflow_translated);
+    check(!overflow_read.ok && overflow_read.fault == MemoryFault::AddressOverflow &&
+              overflow_read.completed_bytes == 0 &&
+              overflow_destination == overflow_destination_before &&
+              !overflow_write.ok && overflow_write.fault == MemoryFault::AddressOverflow &&
+              overflow_write.completed_bytes == 0 &&
+              overflow_source == overflow_source_before &&
+              !overflow_translation.ok &&
+              overflow_translation.fault == MemoryFault::AddressOverflow &&
+              overflow_translated.value == 0x1234 &&
+              !overflow_translation.translated_address.has_value() &&
+              !overflow_translation.region_base.has_value(),
+          "positive accesses at UINT64_MAX fail with AddressOverflow and no mutation");
+}
+
 }
 
 int main() {
@@ -2075,6 +3254,15 @@ int main() {
     test_cpu_program_lifecycle();
     test_host_capability_provider();
     test_x64_step_at_rip_bridge();
+    test_guest_address_helpers();
+    test_memory_result_contract();
+    test_guest_physical_memory_regions();
+    test_guest_physical_memory_accesses();
+    test_guest_physical_memory_commitment_boundary();
+    test_guest_address_space_mapping_contract();
+    test_guest_address_space_permissions_and_fetch();
+    test_guest_address_space_device_dispatch();
+    test_guest_address_space_atomicity_and_boundaries();
 
     host::HostCapabilities capable_host{};
     capable_host.logical_threads = 16;

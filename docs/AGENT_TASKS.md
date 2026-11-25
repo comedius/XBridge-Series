@@ -2929,15 +2929,17 @@ OWNER_APPROVALS:   Owner explicitly authorized PR #17 finalization, draft remova
 
 `observed` — independent tester verification: absolute VS2026 `cmake.exe --version` → `cmake version 4.3.1-msvc1`; absolute `cmake.exe --fresh --preset windows-debug` → `Configuring done (3.3s)`, `Generating done (0.6s)`, build files written to `build/windows-debug`; absolute `cmake.exe --build --preset windows-debug --config Debug` → `xbridge_core.lib`, `xbridge.exe`, `xbridge_tests.exe` produced; absolute `ctest.exe --test-dir build/windows-debug -C Debug --output-on-failure` → `1/1 Test #1: xbridge_tests ... Passed 0.03 sec`, `100% tests passed, 0 tests failed out of 1`. The tester reported that numeric exit codes were `unknown` because appending `$LASTEXITCODE` was permission-denied; no workaround was attempted. `git branch --show-current` → `main`; `git status --porcelain=v1 --untracked-files=all` → only the three expected modified paths; tester `git diff --check` → no output with numeric exit `unknown`. The coordinator separately executed `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`, `git diff HEAD --no-ext-diff --stat` → `3 files changed, 230 insertions(+), 46 deletions(-)`, and `git diff HEAD --no-ext-diff --name-only` → exactly `.opencode/agents/coordinator.md`, `docs/AGENT_TASKS.md`, `docs/architecture/GUEST_ADDRESS_SPACE_DESIGN.md`.
 
+`observed` — publication and PR #17 finalization: `git diff --check; "DIFF_CHECK_EXIT=$LASTEXITCODE"` → `DIFF_CHECK_EXIT=0`; `git add .opencode/agents/coordinator.md docs/architecture/GUEST_ADDRESS_SPACE_DESIGN.md docs/AGENT_TASKS.md` → `ADD_EXIT=0`; `git commit -m "docs(architecture): finalize guest address space design"` → `[main 04ed98e] docs(architecture): finalize guest address space design`, `3 files changed, 377 insertions(+), 47 deletions(-)`, `COMMIT_EXIT=0`; `git push` → `cc5145f..04ed98e  main -> main`, `PUSH_EXIT=0`. Pushing the already locally merged PR head made GitHub mark the PR merged automatically; therefore `gh pr ready 17` and `gh pr merge 17 --merge` were not executed and no forced or destructive Git operation was used. `& 'C:\Program Files\GitHub CLI\gh.exe' pr view 17 --repo comedius/XBridge-Series --json number,state,isDraft,mergedAt,mergeCommit,headRefOid,baseRefName,url` → `{"baseRefName":"main","headRefOid":"fe9dca222e59e9cc88e770a7117795a507732908","isDraft":true,"mergeCommit":{"oid":"dcdca6227081dcdc0d0c8f61832f42c04665753e"},"mergedAt":"2026-11-25T19:57:50Z","number":17,"state":"MERGED","url":"https://github.com/comedius/XBridge-Series/pull/17"}`. The retained `isDraft:true` is GitHub's historical field value; the authoritative state is `MERGED`. `gh pr checks 17 --repo comedius/XBridge-Series` → two `build` checks `pass` (`40s`, `38s`). Acceptance gate `XB-B-REV-03` is closed.
+
 ```yaml
 PACKAGE_ID: XB-NEXT-DEVELOPMENT-01-B
 PARENT_ID: XB-NEXT-DEVELOPMENT-01
 DEPENDENCIES: XB-NEXT-DEVELOPMENT-01-A
-STATUS: in_progress
-IMPLEMENTATION_STATE: self_checked
-REVIEW_STATUS: review_pending
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -2977,7 +2979,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3001,13 +3003,17 @@ OWNER_APPROVALS:   Owner explicitly requested Guest Address Space implementation
 
 `observed` — effective write rights verified before assignment: `developer.md:8-19` allows `src/**`, `include/**` and `CMakeLists.txt`; later lines `:21-45` deny all protected infrastructure/ADR/architecture/roadmap paths; global `opencode.jsonc:136-139` hard-denies `.git/**` and asks on protected rules. The developer therefore has rights for exactly the declared write set and no publication shell rights (`developer.md:53-58` denies all shell before later allows). The coordinator remains the sole writer of `docs/AGENT_TASKS.md`.
 
+`observed` — developer handoff: the sole writer added eight files — `CMakeLists.txt`, five new headers (`guest_address.hpp`, `guest_memory_result.hpp`, `guest_region.hpp`, `guest_physical_memory.hpp`, `guest_address_space.hpp`) and two new sources (`guest_physical_memory.cpp`, `guest_address_space.cpp`). Strong virtual/physical addresses use defaulted equality/ordering; `checked_range_end` leaves its output unchanged on overflow; `MemoryResult` uses safe defaults and clamped `completed_bytes`; execute is checked independently at mapping and region layers; 4 KiB commitment chunks are an implementation detail, not a guest-visible page size; device dispatch uses temporary buffers so failed dispatch cannot partially change caller data; fetch from Device is rejected before dispatch. No tests, CPU integration, Xbox-specific constants, page tables, MMIO/DMA maps, presets, docs, ADRs, license or dependencies were changed by this writer.
+
+`observed` — developer verification commands/results: `git diff --check` → no output (success); `git status --porcelain=v1 --untracked-files=all` → the eight declared files plus concurrent coordinator/tester paths; `cmake --build --preset windows-debug` → PowerShell `CommandNotFoundException`, `cmake` not recognized, exit `1`; `cmake --version` → same `CommandNotFoundException`, exit `1`; no CTest was run. This is a tool-resolution limitation in the developer role, not an observed product build failure; the tester's absolute-path verification is pending.
+
 ```yaml
 PACKAGE_ID: XB-NEXT-DEVELOPMENT-01-C
 PARENT_ID: XB-NEXT-DEVELOPMENT-01
 DEPENDENCIES: XB-NEXT-DEVELOPMENT-01-B
-STATUS: in_progress
-IMPLEMENTATION_STATE: prepared
-REVIEW_STATUS: not_reviewed
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
 PUBLICATION_STATUS: local_only
 BLOCKER_OWNER_DECISION: none
@@ -3033,13 +3039,89 @@ OWNER_APPROVALS:   Owner explicitly approved the remaining tests-only package an
 
 `observed` — effective rights verified before assignment: `tester.md:5-10` allows `tests/**` and denies all other edit paths; `tester.md:38-82` allows the VS2026 absolute-path configure/build/CTest commands and the declared Git read checks; `opencode.jsonc:152-183` hard policies remain intact. No other agent is assigned `tests/test_main.cpp` while this package is active.
 
+`observed` — tester writer handoff: only `tests/test_main.cpp` was changed. All existing tests and helpers remain; new local helpers/tests cover strong address types and `checked_range_end`, `MemoryResult` invariants/defaults/helpers, physical region add/query/access faults, map/unmap/translate success and failure, permission independence, 1–15 byte fetch rules, device dispatch routing/no-dispatch/failure/mixed rejection, atomic writes, touching and spanning ranges, and addresses above 4 GiB. The tester's `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git status --short --branch` and `git diff HEAD --no-ext-diff -- tests/test_main.cpp --stat` were permission-denied and not bypassed. Build and CTest were deliberately not run while waiting for package C stability and are recorded as `unknown` at that point.
+
+`observed` — tester verification after package C stability: absolute `cmake.exe --version` → `cmake version 4.3.1-msvc1`; absolute `cmake.exe --fresh --preset windows-debug` → `Configuring done (2.7s)`, `Generating done (0.4s)`, build files written to `build/windows-debug`; absolute `cmake.exe --build --preset windows-debug --config Debug` → `guest_address_space.cpp`, `guest_physical_memory.cpp` compiled and `xbridge_core.lib`, `xbridge.exe`, `xbridge_tests.exe` produced; absolute `ctest.exe --test-dir build/windows-debug -C Debug --output-on-failure` → `1/1 Test #1: xbridge_tests ... Passed 0.03 sec`, `100% tests passed, 0 tests failed out of 1`. `git diff --check` → no output. Numeric exit codes were `unknown` because the tester did not append `$LASTEXITCODE`; no command was worked around. This is direct output evidence for the product/test build and the single declared CTest target, not a numeric-exit claim.
+
 ```yaml
 PACKAGE_ID: XB-NEXT-DEVELOPMENT-01-D
 PARENT_ID: XB-NEXT-DEVELOPMENT-01
 DEPENDENCIES: XB-NEXT-DEVELOPMENT-01-C
-STATUS: in_progress
-IMPLEMENTATION_STATE: prepared
-REVIEW_STATUS: not_reviewed
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+## XB-NEXT-DEVELOPMENT-01-C-C1 — device dispatch context correction
+
+```text
+PACKAGE_ID:        XB-NEXT-DEVELOPMENT-01-C-C1
+PACKAGE_TYPE:      BUGFIX
+PRODUCT_BOUNDARY:  product
+GOAL:              Make device-dispatch requests and dispatch-originated results consistently use MemoryAccessContext::DeviceDispatch as the approved design contract states.
+FILES:             src/memory/guest_address_space.cpp
+ALLOWED:           Change the two dispatch helper context constants from Data to DeviceDispatch; keep all access kinds, faults, byte counts and translation behavior unchanged.
+FORBIDDEN:         Tests, headers, CMake, presets, docs, ADRs, LICENSE, dependencies, Xbox-specific claims, publication or history changes.
+ACCEPTANCE:        Both dispatch helpers construct DeviceAccessRequest and MemoryResult with MemoryAccessContext::DeviceDispatch; no Data/Write dispatch-context assertion remains after the paired tester correction; independent re-review PASS; build/CTest pass.
+TESTS:             Updated by the tester in XB-NEXT-DEVELOPMENT-01-D-C1; the developer does not edit tests.
+REVIEW:            Independent reviewer re-check mandatory after both C-C1 and D-C1 are stable.
+WORKTREE:          Main checkout; developer is sole writer for this exact file.
+OWNER_APPROVALS:   No owner decision; the design document already defines DeviceDispatch as the dispatch context.
+```
+
+`observed` — review classification (`ses_debb391e1ffevCm9hNIOzwIS7p`): combined verdict `NEEDS_CHANGE`, `ACTIONABLE 3` (MEDIUM 1, LOW 2), `OWNER_DECISION 0`, `NON_BLOCKING 0`, `UNKNOWN 0`; Case B applies. `REV-CD-01` (MEDIUM) is the dispatch-context mismatch and is split by root cause into this product correction and the paired test correction below. `REV-CD-02` and `REV-CD-03` are tests-only gaps assigned wholly to D-C1. No severity was downgraded.
+
+`observed` — developer correction: in `src/memory/guest_address_space.cpp`, `dispatch_device_read` (line 287) and `dispatch_device_write` (line 323) now set `const MemoryAccessContext context = MemoryAccessContext::DeviceDispatch;`. Access kinds, faults, offsets, region identities, byte counts, temporary-buffer handling and non-dispatch contexts remain unchanged. `git status --short; git diff --check; "EXIT=$LASTEXITCODE"` was permission-denied and not bypassed; `git diff --check` → no output; `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`; `git status --porcelain=v1 --untracked-files=all` was unchanged before/after except for this file's content; `git branch --show-current` → `main`. The developer noted that `git diff --check` does not inspect the still-untracked source file, so read-back was the direct correctness evidence.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-01-C-C1
+PARENT_ID: XB-NEXT-DEVELOPMENT-01-C
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-01-C
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+## XB-NEXT-DEVELOPMENT-01-D-C1 — bundled test boundary and dispatch correction
+
+```text
+PACKAGE_ID:        XB-NEXT-DEVELOPMENT-01-D-C1
+PACKAGE_TYPE:      BUGFIX
+PRODUCT_BOUNDARY:  product
+GOAL:              Close all three reviewer findings that require test changes: DeviceDispatch context assertions, MemoryResult helper boundary transformations, and 4 KiB backing-chunk crossing behavior.
+FILES:             tests/test_main.cpp
+ALLOWED:           Update device dispatch assertions to DeviceDispatch; add assertive success(requested=4, completed=8) clamp and failure(None)→Unsupported cases; add a physical-memory read/write test crossing the internal 4 KiB commitment boundary with exact byte and completed_bytes assertions.
+FORBIDDEN:         Product code/header/CMake/preset changes, weakening or deleting existing tests, new dependencies, PR actions, publication, ADR or LICENSE edits.
+ACCEPTANCE:        All existing tests remain; dispatch contexts are DeviceDispatch; both helper boundary cases and the chunk-crossing case are asserted; absolute VS2026 build and CTest pass after the paired product correction; independent re-review PASS; git diff --check EXIT=0.
+TESTS:             This is the bundled correction for the tests-only package. The tester is sole writer.
+REVIEW:            Independent reviewer re-check mandatory after both C-C1 and D-C1 are stable.
+WORKTREE:          Main checkout; tester is sole writer for this exact file.
+OWNER_APPROVALS:   No owner decision; reviewer findings are technical contract gaps within the approved packages.
+```
+
+`observed` — bundled test finding mapping: `REV-CD-01` test half — assertions at `tests/test_main.cpp:2908,2914,2924,2930` currently expect `Data`; these must expect `DeviceDispatch` after the product correction. `REV-CD-02` — `MemoryResult::success` clamps at `include/xbridge/memory/guest_memory_result.hpp:69` and `failure` maps `None` to `Unsupported` at `:84`, but no test asserts either transformation. `REV-CD-03` — `src/memory/guest_physical_memory.cpp:15` uses a 4 KiB internal chunk size and existing fixtures do not cross it.
+
+`observed` — tester correction: the four dispatch-originated assertions now expect `MemoryAccessContext::DeviceDispatch` while access kinds remain `Read`/`Write`; `check_named_result_helpers()` now asserts success with `requested_length=4`, `completed_bytes=8` → clamped to `4`, and `failure(MemoryFault::None, ...)` → `MemoryFault::Unsupported`, both satisfying `result_invariant`; `test_guest_physical_memory_commitment_boundary()` writes and reads an 8-byte pattern across `base+4096` from a distinct `0x8'0000'0000ULL` region and asserts exact bytes plus `completed_bytes == 8`. The new test is called from `main()`. No existing test or helper was removed, skipped or weakened. `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`.
+
+`observed` — post-correction tester verification: absolute `cmake.exe --version` → `cmake version 4.3.1-msvc1`; absolute `cmake.exe --fresh --preset windows-debug` → `Configuring done (2.7s)`, `Generating done (0.4s)`; absolute `cmake.exe --build --preset windows-debug --config Debug` → `guest_address_space.cpp` and `test_main.cpp` compiled and `xbridge_core.lib`, `xbridge.exe`, `xbridge_tests.exe` produced; absolute `ctest.exe --test-dir build/windows-debug -C Debug --output-on-failure` → `1/1 Test #1: xbridge_tests ... Passed 0.03 sec`, `100% tests passed, 0 tests failed out of 1`; `git diff --check` → no output. All numeric exit codes remain `unknown` because the tester did not append `$LASTEXITCODE`; no command was worked around.
+
+`observed` — independent reviewer re-check verdict `PASS`: `REV-CD-01`, `REV-CD-02` and `REV-CD-03` all objectively closed with file:line evidence. New findings `0`; `ACTIONABLE 0`, `OWNER_DECISION 0`, `NON_BLOCKING 0`, `UNKNOWN 0`; severity counts `HIGH 0`, `MEDIUM 0`, `LOW 0`. Case A applies; no second correction round is required. The reviewer confirmed exact write sets, preserved protected interfaces and tests, valid correction YAML, and honest `unknown` numeric exits. C, D, C-C1 and D-C1 are technically complete pending coordinator publication.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-01-D-C1
+PARENT_ID: XB-NEXT-DEVELOPMENT-01-D
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-01-D
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
 PUBLICATION_STATUS: local_only
 BLOCKER_OWNER_DECISION: none
@@ -3073,13 +3155,19 @@ OWNER_APPROVALS:   Owner requested roadmap/task/document cleanup and a short dec
 
 `owner_required` — first memory-architecture ADR: a future `ADR-0012` should record the accepted guest virtual/physical/device dispatch contract only after implementation evidence exists. `docs/DECISIONS.md` ends at ADR-0011 and is not edited here. `owner_required` — license: `LICENSE` remains `UNLICENSED`; no license is selected, recommended as accepted, or changed.
 
+`observed` — writer changes: `docs/ROADMAP.md` item 9 was corrected to state that PR #1 is `CLOSED` without merge, and item 16 was added for `XB-NEXT-DEVELOPMENT-01-A/B` with PR #17 observed `MERGED` and merge commit `dcdca6227081dcdc0d0c8f61832f42c04665753e`. `docs/DEVELOPMENT_ENVIRONMENT.md` received a 2026-11-25 addendum: GitHub CLI `2.105.0` authenticated as `comedius`; coordinator GitHub CLI rights narrowed to reads plus exact PR-#17 actions; current branch/HEAD snapshots; the locally executed VS2026 Debug configure/build/CTest evidence with numeric exit codes honestly marked `unknown` for the tester; and the L1/L2/L3 `local_only` grouping reference. No historical `PUBLICATION_STATUS` token was bulk-changed, no new ADR/license decision was made, and `ai/README.md` was already corrected in package A. `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0` after these edits.
+
+`observed` — independent reviewer verdict `PASS` (Case A): `ACTIONABLE 0`, `OWNER_DECISION 0`, `NON_BLOCKING 1`, `UNKNOWN 1`. The reviewer verified all seven acceptance criteria with file:line evidence, confirmed no false `gh pr ready`/`gh pr merge` claim, confirmed `LICENSE` still `UNLICENSED` and `docs/DECISIONS.md` still ends at ADR-0011, and confirmed tester exit-code uncertainty was not upgraded. No correction was made after this verdict and no further E review was started.
+
+`non_blocking` — `FIND-E-NB-01`: the `DEVELOPMENT_ENVIRONMENT.md` HEAD chain ends at the local merge commit `dcdca622` rather than naming final published commit `04ed98e`; the entries are point-in-time snapshots and final publication state is recorded in `AGENT_TASKS.md`, so the reviewer classified this as LOW/non-blocking. `unknown` — `FIND-E-UK-01`: the reviewer could not re-execute shell/Git commands and therefore treated the writer's `EXIT=0` diff check and exact working-tree composition as recorded evidence only. Both items remain visible and are not silently resolved.
+
 ```yaml
 PACKAGE_ID: XB-NEXT-DEVELOPMENT-01-E
 PARENT_ID: XB-NEXT-DEVELOPMENT-01
 DEPENDENCIES: N/A
-STATUS: in_progress
-IMPLEMENTATION_STATE: prepared
-REVIEW_STATUS: not_reviewed
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
 PUBLICATION_STATUS: local_only
 BLOCKER_OWNER_DECISION: none

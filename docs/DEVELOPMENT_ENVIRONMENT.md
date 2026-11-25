@@ -2,7 +2,7 @@
 
 Diese Datei gehört zur **Entwicklungsinfrastruktur** und ist **nicht Teil des Produktpakets** (`AGENTS.md` §10/§11). Sie beschreibt den technischen Ist-Zustand der Entwicklungsumgebung als Referenz für weitere Entwicklungsaufgaben. `observed`: Der aktive Workspace ist `D:\XBridge 1.0\XBridge-Series-Autonomy`. `owner-provided`: Der hier beschriebene Desktop-PC ist die aktive Entwicklungsumgebung; der frühere Pfad `D:\XBridge 1.0\XBridge-Series-Github` ist **historisch** und nicht mehr aktuell. Ein weiterer, noch nicht geprüfter Rechner ist ein separates zukünftiges Migrationsziel (`planned`/`unknown`); es werden keine Annahmen über ihn getroffen.
 
-Stand der Aufnahme: 2026-11-24.
+Stand der Aufnahme: 2026-11-24; current-state addendum: 2026-11-25.
 
 ## 1. Zweck und Geltungsbereich
 
@@ -39,6 +39,7 @@ Zusätzlich werden `planned` (vorgesehen, nicht umgesetzt/geprüft) und `hypothe
 - Bibliothek `xbridge_core` mit Modulen `core`, `cpu`, `memory`, `profiles`, `host`; CLI-Demo `xbridge`; ein CTest-Ziel `xbridge_tests` (`CMakeLists.txt:10-37`).
 - Synthetische `TestCpu`, generischer `GuestMemory`, `X64CpuState`, deterministische `ExecutionPolicy` mit Mock-Fähigkeiten; Decoder/Interpreter-Subset für x64 NOP/MOV (`docs/ROADMAP.md:5-10`).
 - Der aktuelle Stand ist ein **C++20-Grundgerüst mit synthetischer Test-CPU und bietet keine Xbox-Emulation**. Die Demo gibt laut `docs/AGENT_TASKS.md:374` ausdrücklich `Status: scaffold demo completed (not Xbox emulation)` aus.
+- `observed` (2026-11-25 addendum): PR #17 is `MERGED` with merge commit `dcdca6227081dcdc0d0c8f61832f42c04665753e`; the guest-address-space foundation packages C/D/E are in progress and do not yet change this scaffold-level claim.
 
 `documented` (`AGENTS.md` §2, `docs/ROADMAP.md:43-49`):
 
@@ -73,6 +74,7 @@ Hinweis: Hardwareangaben im Projekt beziehen sich auf das **Gastziel** (Xbox Ser
 | CTest | `4.3.1-msvc1` | `observed`: `ctest --version` → `ctest version 4.3.1-msvc1` durch `tester` (Exit-Code nicht exponiert → `unknown`). Pfad `CMakeCache.txt:226` historisch |
 | MSBuild | `18.12.3` | `historisch dokumentiert` (`docs/AGENT_TASKS.md:95`, Build-Log des ersten Rechners) |
 | Git | `2.56.1`; HTTPS-Zugriff auf `origin` erforderlich | Version `owner-provided`, nicht agentenverifiziert (`git --version` nicht in der Allowlist). `observed`: `git.exe` unter `C:\Program Files\Git\cmd`; Git-Lesekommandos funktionieren über Befehlsnamen |
+| GitHub CLI | `2.105.0`, installiert und für `github.com` authentifiziert | `observed` (`winget install --id GitHub.cli`, `Successfully verified installer hash`; `& 'C:\Program Files\GitHub CLI\gh.exe' auth status` → `✓ Logged in to github.com account comedius (keyring)`). In dieser Sitzung ist der absolute Pfad erforderlich; die Coordinator-Rechte erlauben nur Leseabfragen und zwei namentlich freigegebene PR-#17-Aktionen. Keine Zugangsdaten werden im Repository gespeichert. |
 | GitHub Desktop | `app-3.7.0`, installiert | `observed` (Verzeichnis `C:\Users\Dennis\AppData\Local\GitHubDesktop\app-3.7.0`). Publikation erfolgt nicht über Desktop, sondern koordiniert: der Coordinator darf laut `AGENTS.md` §8 / `AGENT_WORKFLOW.md` committen, pushen und PRs verwalten (siehe §10); die ältere Owner-Only-Aussage ist **historisch**. |
 | OpenCode CLI | Ressourcen-Version `2.4.1` | `observed` (`opencode-cli.version`); Laufzeitversion `unknown` (nicht per allowlistetem Kommando geprüft). `2.3.2` (`docs/AGENT_TASKS.md:28,44`) ist **historisch** |
 | OpenCode Desktop | installiert | `observed` (Desktop-Anwendung vorhanden); konkrete Version `unknown` |
@@ -162,7 +164,7 @@ Konfiguration `observed` (`opencode.jsonc:4-13`): `default_agent = coordinator`;
 
 - **Global:** `external_directory "*" ask` (`opencode.jsonc:75`), `shell "*" ask` (`:77`), `question "*" ask` (`:117`), `subagent` erlaubt genau `architect`, `developer`, `tester`, `reviewer`, `researcher` (`:118-122`), `webfetch/websearch "*" deny` (`:123-124`). Ältere Angaben in diesem Abschnitt sind **historisch** und durch XB-AUTONOMY-ACTIVATION-01 superseded.
 - **Harte Denys (`opencode.jsonc:142-172`):** destruktive Git-Befehle (u. a. `rebase`, `reset`, `clean`, `checkout`, `switch`, `restore`, `stash`, `revert`, `cherry-pick`, `pull`, `tag`, `worktree`, `git config --global *`), Install-Kommandos, `Remove-Item`/`rm`/`del`/`Move-Item`, `read/edit:.git/**` und `.env`-Zugriffe (inkl. dokumentierter `.env.example`-Seiteneffekt). `git add/commit/push/merge` und `gh auth/pr/repo` sind **keine** harten Denys, sondern für den Coordinator als Shell-Regeln erlaubt (`coordinator.md:125-145`). Mutierende Code-Mode-Werkzeuge sind über vier Regeln erfasst: `automation_create`, `automation_delete`, `opencode_session_move`, `opencode_worktree_create` (`opencode.jsonc:134-139`); die Laufzeitwirkung bleibt `unknown`.
-- **Coordinator:** `shell "*" deny`, danach exakte Git-Read-Kommandos einschließlich `git status --short --branch` (`coordinator.md:92-124`) sowie `git add/commit/push/merge`, `gh auth status`, `gh pr *`, `gh repo view *` (`coordinator.md:125-145`). `question "*" allow`, `webfetch/websearch deny`; `opencode *` bleibt bewusst deny.
+- **Coordinator:** `shell "*" deny`, danach exakte Git-Read-/Fetch-Kommandos einschließlich `git status --short --branch` und `git fetch origin architecture/guest-address-space-foundation`, sowie `git add/commit/push/merge`. GitHub CLI ist auf Leseabfragen (`auth status`, `repo view *`, `pr view *`, `pr list *`, `pr checks *`, `pr diff *`, `pr status`) und genau zwei namentlich freigegebene Mutationen (`pr ready 17`, `pr merge 17 --merge`) beschränkt; ein pauschales `gh pr *` ist seit `XB-NEXT-DEVELOPMENT-01-A` entfernt. `question "*" allow`, `webfetch/websearch deny`; `opencode *` bleibt bewusst deny. Line numbers shifted by this addendum; the effective rules in `.opencode/agents/coordinator.md` are authoritative.
 - **Entwickler/Tester:** exakte Git- sowie CMake-/CTest-Befehle erlaubt; `opencode *` und `shell "*" deny`.
 - **Architect/Reviewer:** `edit "*" deny`, alle Shell-Zugriffe deny – strikt read-only.
 - **Researcher:** Web-Tools erlaubt, Shell deny.
@@ -184,9 +186,9 @@ Weitere Begrenzungen `observed`: `opencode debug config` / `opencode debug agent
 - `documented` (`AGENTS.md` §8, `docs/AGENT_WORKFLOW.md`, XB-AUTONOMY-ACTIVATION-01): Der **Coordinator** darf nach Tests und unabhängigem Review committen, pushen, mergen und GitHub-PRs erstellen/aktualisieren; Subagenten veröffentlichen nicht. Die ältere Aussage zur ausschließlichen Owner-Publikation ist **historisch** und durch die aktuelle Freigabe superseded. Harte Denys für Historie-Umschreibung, Verwerfen, destruktive Befehle und globale Git-Konfiguration bleiben unverändert. Tatsächlich ausgeführt wurde in diesem Paket kein Publish-Schritt.
 - `documented` (Abschnitt `XB-0086-C2 — final status alignment and publication group 0 definition` in `docs/AGENT_TASKS.md`): Publikationsgruppe 0 besteht aus genau `docs/AGENT_WORKFLOW.md`, `docs/RELEASE_CHECKLIST.md`, `docs/AGENT_TASKS.md`, `docs/ROADMAP.md`, `docs/PORTABLE_SETUP.md`; `AGENTS.md` ist wegen einer offenen Versionierungsentscheidung ausgenommen. Die frühere Zeilenangabe `:588` ist durch nachträgliche Ledger-Einträge ungültig geworden und wird nicht mehr verwendet. Dies ist eine Gruppierung, keine Publikationsfreigabe.
 
-`observed` (Arbeitsstand bei Erstellung dieser Datei): Branch `docs/opencode-publication-group-2`, HEAD `58aa1f60eb5e67cbf8aa884f694fce208b54819f`. Nicht publizieren: `.owner-patch-backup/**`, `CMakePresets.json.backup`, `debug-*.txt` (untracked Artefakte; keine pauschale Index-Aufnahme).
+`observed` (historischer Arbeitsstand bei Erstellung dieser Datei): Branch `docs/opencode-publication-group-2`, HEAD `58aa1f60eb5e67cbf8aa884f694fce208b54819f`. Nicht publizieren: `.owner-patch-backup/**`, `CMakePresets.json.backup`, `debug-*.txt` (untracked Artefakte; keine pauschale Index-Aufnahme). `observed` (current addendum): branch `main`; baseline HEAD `b8265eb7ed7e17d6e36808c762f746122188a92b`, after `XB-NEXT-DEVELOPMENT-01-A` `cc5145f`, after the local PR-#17 merge `dcdca6227081dcdc0d0c8f61832f42c04665753e`; the PR-#17 final publication state is recorded in `docs/AGENT_TASKS.md` and is not duplicated here.
 
-`documented`/`unknown`: Ein gesondertes Paket 2 oder eine Publikationsgruppe 2 ist in `docs/AGENT_TASKS.md` nicht definiert; die einzige dort definierte Gruppierung ist Publikationsgruppe 0 (Abschnitt `XB-0086-C2 — final status alignment and publication group 0 definition`). Package 2 bleibt geschlossen und nicht freigegeben; diese Korrekturrunde behandelt ausschließlich die vom Eigentümer freigegebenen P1-Findings.
+`documented`/`unknown`: Ein gesondertes Paket 2 oder eine Publikationsgruppe 2 ist in `docs/AGENT_TASKS.md` nicht definiert; die einzige dort definierte Gruppierung ist Publikationsgruppe 0 (Abschnitt `XB-0086-C2 — final status alignment and publication group 0 definition`). Die `local_only`-Gruppierung L1/L2/L3 für den aktuellen Addendum steht in `docs/AGENT_TASKS.md` unter `XB-NEXT-DEVELOPMENT-01-E`. Package 2 bleibt geschlossen und nicht freigegeben; diese Korrekturrunde behandelt ausschließlich die vom Eigentümer freigegebenen P1-Findings.
 
 ## 11. Externe SSD und geplanter Einsatz an zwei Rechnern
 
@@ -215,7 +217,7 @@ Weitere Begrenzungen `observed`: `opencode debug config` / `opencode debug agent
 | `debug-config-check.txt`, `debug-agents-check.txt` | `unknown` – als Binärdateien nicht als Text interpretiert |
 | Plain `cmake`/`ctest` im Agentenkontext | `observed` über einfache Befehlsnamen durch `tester` (`4.3.1-msvc1`); Exit-Codes `unknown`. Frühere `CommandNotFoundException` (`docs/AGENT_TASKS.md:92`) ist **historisch / superseded** |
 | `git diff --check` | `observed`: `EXIT=0` in XB-AUTONOMY-ACTIVATION-01; historische CRLF-Warnung für `CMakePresets.json` nicht blockierend |
-| Build/CTest in dieser Aufnahme | **nicht ausgeführt** – historische Ergebnisse werden nicht als neue Prüfung ausgegeben |
+| Build/CTest im current-state addendum | `observed` (`XB-NEXT-DEVELOPMENT-01-B`, tester): absolute VS2026 `cmake.exe --version` → `4.3.1-msvc1`, `cmake.exe --fresh --preset windows-debug` → configure/generate done, `cmake.exe --build --preset windows-debug --config Debug` → `xbridge_core.lib`, `xbridge.exe`, `xbridge_tests.exe` produced, absolute `ctest.exe --test-dir build/windows-debug -C Debug --output-on-failure` → `1/1`, `100% tests passed, 0 tests failed out of 1`. Numeric exit codes were `unknown` for the tester because appending `$LASTEXITCODE` was permission-denied; the coordinator observed `git diff --check` → `EXIT=0`. This verifies the scaffold build, not Xbox emulation. |
 
 ## 13. Voraussetzungen für die spätere Xbox-Series-X-Emulatorentwicklung
 

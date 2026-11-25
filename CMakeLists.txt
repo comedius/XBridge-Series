@@ -14,6 +14,8 @@ add_library(xbridge_core
     src/cpu/x64_instruction_decoder.cpp
     src/cpu/x64_instruction_interpreter.cpp
     src/memory/memory.cpp
+    src/memory/guest_address_space.cpp
+    src/memory/guest_physical_memory.cpp
     src/profiles/hardware_profile.cpp
     src/host/execution_policy.cpp
 )
