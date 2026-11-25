@@ -45,6 +45,9 @@ permissions:
     resource: "docs/ARCHITECTURE.md"
     effect: allow
   - action: edit
+    resource: "docs/architecture/**"
+    effect: allow
+  - action: edit
     resource: "ai/README.md"
     effect: allow
   - action: edit
