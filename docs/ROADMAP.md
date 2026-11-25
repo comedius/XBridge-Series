@@ -73,3 +73,7 @@ See `docs/RELEASE_CHECKLIST.md`. The development repository and all agent config
 ## Phase 6 — Owner release and post-release maintenance
 
 The project owner performs all publication steps. The private development repository continues to host agents, prompts, roadmaps, and test infrastructure.
+
+## Repository publication policy
+
+The XBridge development repository is public. Project-related AI/agent configuration, prompts, workflow documents, research and automation may be committed and published here. The distinction between development infrastructure and product code applies only to a future end-user product package, which must use an explicit reviewed allowlist. Only private personal data and actual secrets/credentials are excluded from publication. Older statements in this roadmap describing a private repository or forbidding publication of AI/development files are superseded by this policy.
