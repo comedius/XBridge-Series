@@ -126,6 +126,53 @@ Use these labels for every technical claim:
 
 Never present `hypothesis` or `unknown` as implemented behavior.
 
+## Research register and evidence lifecycle
+
+This section defines how research becomes recorded evidence and how that evidence is carried into packages. It consumes the schema in `docs/RESEARCH_REGISTER.md`; it does not create a second schema. If this section and the register disagree, the register's Sections 2–6 are authoritative for register entries and the coordinator must record the conflict instead of silently choosing.
+
+### Creating and completing entries
+
+1. Create a register entry when a RESEARCH package starts, when a derived recommendation becomes a planned package, or when an existing legacy row is assessed. Use the package ID or the registered question ID, and name the responsible installed `researcher` in the ledger.
+2. Use exactly the 23 required fields from `docs/RESEARCH_REGISTER.md` Section 3. Keep evidence label, source class and capability status separate; `partial` and compound values remain workflow/lifecycle notes under Section 5.
+3. The researcher records the conformance status using the objective criteria in register Section 6. `conformant` requires all criteria to hold; `non-conformant` requires the failing criteria to be listed; `not_applicable` is limited to template/header or owner-excluded entries with a reason.
+4. The independent reviewer verifies register conformance with file:line evidence. A researcher's `conformant` entry is not a reviewer PASS, and a reviewer PASS is not publication or implementation approval.
+5. Unsupported, unverified or legally blocked findings stay `unknown` or `investigated-unsupported`; they are never promoted to `implemented-unvalidated` or `validated` by translation counts, stub presence or project-authored claims.
+6. Handoff to `architect` or `developer` occurs only through an approved package envelope. Owner/legal gates for licenses, ADRs, interface changes and product changes are unchanged.
+7. The coordinator records the resulting status, review verdict and open decisions in `docs/AGENT_TASKS.md` using the axes below.
+
+### Status axes in the ledger
+
+The ledger `Status` column keeps exactly the six authoritative tokens from `docs/AGENT_TASKS.md`: `planned`, `in_progress`, `needs_owner`, `pass`, `blocked`, `superseded`. No other file may redefine this column. The finer states from `docs/AGENT_CORE_ARCHITECTURE.md` Section 4 are recorded as the separate metadata axis `IMPLEMENTATION_STATE`:
+
+| Logical `IMPLEMENTATION_STATE` | Ledger `Status` mapping |
+|---|---|
+| `planned` | `planned` |
+| `prepared`, `in_progress`, `self_checked`, `review`, `correcting` | `in_progress` |
+| `done` | `pass` |
+| `blocked` | `blocked` |
+| `needs_owner` | `needs_owner` |
+
+`superseded` is a historical ledger value with no logical counterpart. Additional independent axes are `REVIEW_STATUS` (`not_reviewed`, `review_pending`, `PASS`, `NEEDS_CHANGE`, `BLOCKED`), `CONFORMANCE_STATUS` (`conformant`, `non-conformant`, `not_assessed`, `not_applicable`) and `PUBLICATION_STATUS` (`local_only`, `owner_pending`, `published`). No agent may set `published`; publication remains owner-only. The `READY_FOR_COMMIT`, `NEEDS_REVIEW` and `DO_NOT_PUBLISH` values recorded for XB-0085 are historical publication-audit labels, are not ledger publication-status tokens and are not mapped into this axis.
+
+### Machine-readable readiness convention (evaluation-only)
+
+The following is a documentation convention for future ledger entries. It does **not** implement XB-0082: no generator, tool, CI job, new dependency or percentage display is added, and XB-0082 remains evaluation-only pending its separate owner decision.
+
+```yaml
+PACKAGE_ID: <identifier>
+PARENT_ID: <identifier or N/A>
+DEPENDENCIES: <comma-separated identifiers or N/A>
+STATUS: planned | in_progress | needs_owner | pass | blocked | superseded
+IMPLEMENTATION_STATE: planned | prepared | in_progress | self_checked | review | correcting | done | blocked | needs_owner
+REVIEW_STATUS: not_reviewed | review_pending | PASS | NEEDS_CHANGE | BLOCKED
+CONFORMANCE_STATUS: conformant | non-conformant | not_assessed | not_applicable
+PUBLICATION_STATUS: local_only | owner_pending | published
+BLOCKER_OWNER_DECISION: none | <owner-decision identifier>
+PROGRESS_UNITS: N/A | <integer>/<integer>
+```
+
+Rules: use one fenced `yaml` block per tracked entry; keep the keys fixed and in this order; use only the listed tokens in value fields; `BLOCKER_OWNER_DECISION` may contain only `none` or an existing owner-decision identifier; `PROGRESS_UNITS` must be `N/A` unless the package declared an objective denominator, and a percentage may be derived only from that declared integer pair. Only `STATUS: pass` counts as complete; `review_ready` is not a token here, and `review_pending`, `needs_owner`, `blocked` and `failed` never count as complete. An acceptance failure must be recorded as an explicit `STATUS`/`IMPLEMENTATION_STATE` reason rather than an invented percentage. The verification check is read-back of key presence and allowed tokens; no automatic tool is part of this convention.
+
 ## Worktrees
 
 - Use the OpenCode worktree functions only. Do not use Git shell commands to create, switch, merge, or remove worktrees.
