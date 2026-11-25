@@ -168,6 +168,19 @@ permissions:
   - action: shell
     resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr merge 17 --merge"
     effect: allow
+  # XB-NEXT-DEVELOPMENT-02: narrow publication rights for this repository and feature branch only.
+  - action: shell
+    resource: "git rev-parse origin/main"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr create --repo comedius/XBridge-Series --base main --head feature/xb-next-development-02 *"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr ready * --repo comedius/XBridge-Series"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\GitHub CLI\\gh.exe' pr merge * --merge --repo comedius/XBridge-Series"
+    effect: allow
   # Read-only fetch rights; branch switching stays hard-denied.
   - action: shell
     resource: "git fetch origin"

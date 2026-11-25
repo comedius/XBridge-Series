@@ -2,8 +2,10 @@
 
 #include "xbridge/cpu/x64_cpu_state.hpp"
 #include "xbridge/cpu/x64_instruction_decoder.hpp"
+#include "xbridge/memory/guest_virtual_memory.hpp"
 #include "xbridge/memory/memory.hpp"
 
+#include <optional>
 #include <span>
 
 namespace xbridge::cpu {
@@ -12,6 +14,18 @@ namespace xbridge::cpu {
 enum class X64ExecuteStatus {
     Ok,
     MemoryAccessError
+};
+
+// Ergebnis der Ausführung über IGuestVirtualMemory. Der Status bleibt mit dem
+// bestehenden X64ExecuteStatus vergleichbar; Diagnostik wird nur bei
+// Speicherfehlern mitgeliefert.
+struct X64ExecutionResult {
+    X64ExecuteStatus status{X64ExecuteStatus::Ok};
+    std::optional<memory::MemoryResult> memory_result{};
+
+    friend constexpr bool operator==(const X64ExecutionResult& result, X64ExecuteStatus status) noexcept {
+        return result.status == status;
+    }
 };
 
 // Führt eine dekodierte x64-Instruktion aus.
@@ -39,5 +53,21 @@ enum class X64ExecuteStatus {
 [[nodiscard]] X64ExecuteStatus step_x64_at_rip(
     X64CpuState& state,
     memory::GuestMemory& memory) noexcept;
+
+// Additive Ausführungspfade über die virtuelle Speicher-Schnittstelle.
+// Die bestehenden GuestMemory-Funktionen bleiben unverändert erhalten.
+[[nodiscard]] X64ExecutionResult execute_instruction_via(
+    const DecodedInstruction& instruction,
+    X64CpuState& state,
+    memory::IGuestVirtualMemory& memory) noexcept;
+
+[[nodiscard]] X64ExecutionResult step_x64_instruction_via(
+    std::span<const std::uint8_t> bytes,
+    X64CpuState& state,
+    memory::IGuestVirtualMemory& memory) noexcept;
+
+[[nodiscard]] X64ExecutionResult step_x64_at_rip_via(
+    X64CpuState& state,
+    memory::IGuestVirtualMemory& memory) noexcept;
 
 } // namespace xbridge::cpu
