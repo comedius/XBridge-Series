@@ -4,7 +4,7 @@ This document is **development infrastructure**. It is not part of the product p
 
 ## Authority order
 
-When sources conflict, stop and ask the project owner. Do not silently choose.
+When sources conflict, follow the authority order below. Resolve implementation and workflow conflicts within the approved project scope. Escalate only genuine product, legal, licensing, or irreversible decisions outside the existing authorization.
 
 1. `AGENTS.md`
 2. `docs/DECISIONS.md` (accepted ADRs)
@@ -58,9 +58,9 @@ Subagents do not start further subagents. The coordinator is the only central ro
 6. Tester independently verifies without weakening tests.
 7. Reviewer performs the read-only review.
 8. Coordinator records results and open points in `docs/AGENT_TASKS.md`.
-9. Project owner performs all Git/GitHub publication.
+9. Coordinator performs authorized Git/GitHub publication after required tests and independent review.
 
-Maximum two normal review correction rounds. After that the coordinator escalates with findings and a concrete decision request.
+Use up to two bundled review-correction rounds. If an issue remains after that, continue independent work and escalate only the unresolved technical decision; do not abandon unrelated packages.
 
 ### Review-fix workflow
 
@@ -71,7 +71,7 @@ After EVERY reviewer result, classify each finding as `ACTIONABLE`, `OWNER_DECIS
 
 Allow at most two bundled correction rounds. If any problem remains unresolved after the second re-check, mark the package `BLOCKED` and escalate with findings and all collected owner decisions. Do not split findings across rounds or silently downgrade severity.
 
-The reviewer stays read-only: it never edits files, never launches subagents, and never asks the owner directly. The coordinator routes changes only through permitted installed writers or a complete owner patch. Permissions are never expanded or bypassed; when effective rights cannot be determined, the task is not released, an owner patch is prepared, and the point is recorded as `OWNER_DECISION`. Never claim a fix is applied when only an owner patch was prepared.
+The reviewer stays read-only: it never edits files, never launches subagents, and never asks the owner directly. The coordinator routes changes only through permitted installed writers or a complete owner patch. The coordinator is authorized to correct project-level agent and OpenCode permissions needed for this workflow. When a denial occurs, identify its actual layer, correct it within the authorized scope, reload configuration if required, and retry the blocked action. Do not use blanket wildcard permissions. Never claim a fix is applied until the blocked action succeeds.
 
 ## Product / development boundary
 
@@ -97,7 +97,7 @@ These paths must never be copied automatically into a product package. The produ
 - Shell starts with `ask`; only the listed Git, CMake and CTest commands are allowed. They are not all read-only: CMake configure/build and CTest write outputs under `build/**`.
 - Unknown shell commands remain `ask`. Never use blanket `--auto` in agent runs.
 - External directories require confirmation by default.
-- Git/GitHub publication commands and global Git configuration changes are hard-denied by policy.
+- Project Git/GitHub publication is authorized for the coordinator after checks and review. Global Git configuration changes remain prohibited unless separately required and explicitly authorized.
 - The reviewer has a per-agent `edit: * = deny`. OpenCode V2 policies are not agent-scoped, so this is an agent configuration deny plus review verification, not a global per-agent policy.
 - Shell pattern matching is not an operating-system sandbox. A sufficiently authorized human can still bypass tool permissions outside OpenCode; the rules protect agent behavior, not the host account.
 
@@ -152,7 +152,7 @@ The ledger `Status` column keeps exactly the six authoritative tokens from `docs
 | `blocked` | `blocked` |
 | `needs_owner` | `needs_owner` |
 
-`superseded` is a historical ledger value with no logical counterpart. Additional independent axes are `REVIEW_STATUS` (`not_reviewed`, `review_pending`, `PASS`, `NEEDS_CHANGE`, `BLOCKED`), `CONFORMANCE_STATUS` (`conformant`, `non-conformant`, `not_assessed`, `not_applicable`) and `PUBLICATION_STATUS` (`local_only`, `owner_pending`, `published`). No agent may set `published`; publication remains owner-only. The `READY_FOR_COMMIT`, `NEEDS_REVIEW` and `DO_NOT_PUBLISH` values recorded for XB-0085 are historical publication-audit labels, are not ledger publication-status tokens and are not mapped into this axis.
+`superseded` is a historical ledger value with no logical counterpart. Additional independent axes are `REVIEW_STATUS` (`not_reviewed`, `review_pending`, `PASS`, `NEEDS_CHANGE`, `BLOCKED`), `CONFORMANCE_STATUS` (`conformant`, `non-conformant`, `not_assessed`, `not_applicable`) and `PUBLICATION_STATUS` (`local_only`, `owner_pending`, `published`). The coordinator may set `published` only after the corresponding GitHub publication is confirmed. The `READY_FOR_COMMIT`, `NEEDS_REVIEW` and `DO_NOT_PUBLISH` values recorded for XB-0085 are historical publication-audit labels, are not ledger publication-status tokens and are not mapped into this axis.
 
 ### Machine-readable readiness convention (evaluation-only)
 
@@ -289,7 +289,7 @@ The current queue lives in `docs/AGENT_TASKS.md` (packages) and `docs/ROADMAP.md
 
 - Subagent runs (architect, developer, tester, reviewer, researcher) execute in the background of an OpenCode session; the coordinator collects their results and continues other work meanwhile. Code Mode worktree functions are available directly.
 - Shell access for the coordinator is limited by role rules (`cmake`, `ctest`, `opencode` are denied); verification is delegated to `tester`, which may run the allowlisted commands.
-- Not automatable by agents: `opencode session export/import` (no allowlisted command, no Code Mode tool, and all roles deny shell `opencode *`), editing `.opencode/**` or `opencode.jsonc`, and installing or changing permissions. These require one owner action each; the coordinator bundles such requests.
+- Still owner-operated: `opencode session export/import` is not in the approved command set and must be run manually by the owner. Project-level edits to `.opencode/**` and `opencode.jsonc` are authorized for the coordinator under the scoped rules above; the coordinator may correct those rules and reload OpenCode as required. Installing additional, unconfigured specialist roles remains a separate owner-controlled action.
 - Interactive TUI permission prompts and a second-PC test remain `unknown`.
 
 ## Public repository clarification (owner policy, 2026-11-25)

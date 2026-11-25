@@ -100,9 +100,10 @@ Never claim that a build or test passed unless it was actually executed successf
 
 ## 8. Git and user control
 
-- Agents never commit, push, merge, tag, release, rewrite history, discard changes or create pull requests.
-- Do not overwrite or discard existing user changes.
-- The project owner controls Git/GitHub publication.
+- The coordinator may commit, push, merge completed and independently reviewed work, and create/update pull requests within the project repository.
+- Subagents do not publish; they return completed changes to the coordinator.
+- Never overwrite or discard existing user changes, rewrite history, or perform destructive cleanup.
+- Verify CI and required reviews before merging.
 - Report the current branch and changed files.
 
 ## 9. Final report
@@ -130,4 +131,4 @@ A `FINAL_CLEANUP` package may start only after feature-complete status and expli
 - The coordinator is the primary agent; architect, developer, tester, reviewer and researcher are subagents.
 - Subagents do not start further subagents. The coordinator routes all hand-offs.
 - Every package follows the envelope in `docs/AGENT_WORKFLOW.md`.
-- Agents do not publish Git/GitHub changes. The project owner performs publication.
+- The coordinator is authorized to publish verified project changes through Git/GitHub. Subagents never publish independently.
