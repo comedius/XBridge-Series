@@ -289,7 +289,7 @@ The current queue lives in `docs/AGENT_TASKS.md` (packages) and `docs/ROADMAP.md
 
 - Subagent runs (architect, developer, tester, reviewer, researcher) execute in the background of an OpenCode session; the coordinator collects their results and continues other work meanwhile. Code Mode worktree functions are available directly.
 - Shell access for the coordinator is limited by role rules (`cmake`, `ctest`, `opencode` are denied); verification is delegated to `tester`, which may run the allowlisted commands.
-- Not automatable by agents: `opencode session export/import` (no allowlisted command, no Code Mode tool, and all roles deny shell `opencode *`), editing `.opencode/**` or `opencode.jsonc`, and installing or changing permissions. These require one owner action each; the coordinator bundles such requests.
+- Still owner-operated: `opencode session export/import` is not in the approved command set and must be run manually by the owner. Project-level edits to `.opencode/**` and `opencode.jsonc` are authorized for the coordinator under the scoped rules above; the coordinator may correct those rules and reload OpenCode as required. Installing additional, unconfigured specialist roles remains a separate owner-controlled action.
 - Interactive TUI permission prompts and a second-PC test remain `unknown`.
 
 ## Public repository clarification (owner policy, 2026-11-25)
