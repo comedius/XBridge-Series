@@ -14,7 +14,7 @@ This roadmap describes development phases. It is development documentation and i
 - Private development repository with the coordinator and five subagents (installed and validated).
 - Package-based workflow defined in `docs/AGENT_WORKFLOW.md`.
 - Strict separation of product code and development infrastructure.
-- All Git/GitHub publication remains with the project owner.
+- The coordinator may publish completed, independently reviewed project changes after required checks pass; subagents never publish independently.
 - **Planned expansion (not installed):** nine additional specialists — `cpu-developer`, `memory-developer`, `gpu-developer`, `audio-developer`, `input-developer`, `platform-developer`, `test-engineer`, `performance-engineer`, `integration-engineer`. Their ownership and the autonomous cycle are specified in `docs/AGENT_WORKFLOW.md`. Installation requires a scoped owner permission for `.opencode/agents/**`; until then the coordinator uses the five existing subagents and never reports the new roles as active.
 
 ### Current milestone queue (development infrastructure)
@@ -72,7 +72,7 @@ See `docs/RELEASE_CHECKLIST.md`. The development repository and all agent config
 
 ## Phase 6 — Owner release and post-release maintenance
 
-The project owner performs all publication steps. The private development repository continues to host agents, prompts, roadmaps, and test infrastructure.
+The coordinator may publish verified project changes through Git/GitHub under the scoped permissions in `.opencode/agents/coordinator.md`. The development repository hosts agents, prompts, roadmaps, and test infrastructure; these remain excluded from any future end-user product package unless explicitly allowlisted.
 
 ## Repository publication policy
 
