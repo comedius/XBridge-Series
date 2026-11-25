@@ -1,8 +1,10 @@
 #include "xbridge/analysis/game_intelligence.hpp"
+#include "xbridge/runtime/system_services.hpp"
 
 #include "pe_coff_reader.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -101,11 +103,97 @@ void add_component_candidates(AnalysisEntry& entry) {
         "candidate: read_only_json_reporter");
 }
 
+std::string labeled(const std::string& observation, std::string_view label) {
+    return observation + "; label=" + std::string(label);
+}
+
+void add_service_candidate(AnalysisEntry& entry, const std::string& observed,
+                           const std::string_view service, const std::string_view label) {
+    entry.runtime_service_candidates.push_back(
+        labeled(observed + "; service=" + std::string(service), label));
+}
+
+// Only four owner-reviewed library family names are mapped. Every mapped name
+// remains an Indicator, never a capability or compatibility claim. Service
+// tokens come from the neutral C1 registry vocabulary, not ad hoc spellings.
+void add_service_candidates(AnalysisEntry& entry) {
+    namespace runtime = xbridge::runtime;
+    for (const std::string& dependency : entry.dependencies) {
+        const std::string name = ascii_lower(dependency);
+        const std::string observed = "dependency=" + dependency;
+        if (name == "xmem") {
+            add_service_candidate(entry, observed,
+                                  runtime::service_id_name(runtime::ServiceId::System),
+                                  "Indicator");
+            add_service_candidate(entry, observed,
+                                  runtime::service_id_name(runtime::ServiceId::VirtualMemory),
+                                  "Indicator");
+        } else if (name == "xg_xs" || name == "xgameruntime") {
+            add_service_candidate(
+                entry, observed,
+                runtime::service_id_name(runtime::ServiceId::RuntimeInitialization), "Indicator");
+        } else if (name == "d3d12_xs") {
+            add_service_candidate(entry, observed,
+                                  runtime::service_id_name(runtime::ServiceId::Graphics),
+                                  "Indicator");
+        } else {
+            add_service_candidate(entry, observed, "unknown", "Unknown");
+        }
+    }
+}
+
+bool section_count_from_fields(const std::vector<std::string>& fields, std::uint64_t& count) {
+    constexpr std::string_view prefix = "number_of_sections=";
+    for (const std::string& field : fields) {
+        if (!field.starts_with(prefix)) {
+            continue;
+        }
+        const char* begin = field.data() + prefix.size();
+        const char* end = field.data() + field.size();
+        const auto parsed = std::from_chars(begin, end, count);
+        return parsed.ec == std::errc{};
+    }
+    return false;
+}
+
+void add_loader_requirements(AnalysisEntry& entry) {
+    entry.loader_requirements.push_back(
+        labeled("file_size=" + std::to_string(entry.size_bytes), "Confirmed"));
+    std::uint64_t section_count = 0U;
+    if (section_count_from_fields(entry.pe_fields, section_count)) {
+        entry.loader_requirements.push_back(
+            labeled("section_count=" + std::to_string(section_count), "Confirmed"));
+    }
+    for (const std::string& relocation : entry.relocation_types) {
+        entry.loader_requirements.push_back(labeled("relocation_type=" + relocation, "Confirmed"));
+    }
+    for (const std::string& dependency : entry.dependencies) {
+        entry.loader_requirements.push_back(labeled("import=" + dependency, "Confirmed"));
+    }
+    for (const std::string& symbol : entry.exports) {
+        entry.loader_requirements.push_back(labeled("export=" + symbol, "Confirmed"));
+    }
+}
+
+void add_unknown_structures(AnalysisEntry& entry) {
+    // PeFacts does not expose section characteristics, image base as a typed
+    // value or relocation page offsets. Report the absence explicitly.
+    entry.unsupported_or_unknown_structures.push_back(
+        labeled("image_base=unknown", "Unknown"));
+    entry.unsupported_or_unknown_structures.push_back(
+        labeled("section_characteristics=unknown", "Unknown"));
+    entry.unsupported_or_unknown_structures.push_back(
+        labeled("relocation_offsets=unknown", "Unknown"));
+}
+
 void finalize_entry(AnalysisEntry& entry) {
     auto sort_unique = [](std::vector<std::string>& values) {
         std::sort(values.begin(), values.end());
         values.erase(std::unique(values.begin(), values.end()), values.end());
     };
+    add_service_candidates(entry);
+    add_loader_requirements(entry);
+    add_unknown_structures(entry);
     sort_unique(entry.platform_indicators);
     sort_unique(entry.pe_fields);
     sort_unique(entry.imports);
@@ -116,6 +204,9 @@ void finalize_entry(AnalysisEntry& entry) {
     sort_unique(entry.resource_kinds);
     sort_unique(entry.uncertainties);
     sort_unique(entry.component_mapping);
+    sort_unique(entry.runtime_service_candidates);
+    sort_unique(entry.loader_requirements);
+    sort_unique(entry.unsupported_or_unknown_structures);
 }
 
 void apply_pe_facts(AnalysisEntry& entry, const detail::PeFacts& facts) {
@@ -406,6 +497,13 @@ void append_json_entry(std::string& out, const AnalysisEntry& entry, bool last) 
     append_json_array(out, "uncertainties", entry.uncertainties, 6);
     out += ",\n";
     append_json_array(out, "component_mapping", entry.component_mapping, 6);
+    out += ",\n";
+    append_json_array(out, "runtime_service_candidates", entry.runtime_service_candidates, 6);
+    out += ",\n";
+    append_json_array(out, "loader_requirements", entry.loader_requirements, 6);
+    out += ",\n";
+    append_json_array(out, "unsupported_or_unknown_structures",
+                      entry.unsupported_or_unknown_structures, 6);
     out += ",\n";
     out += "      \"status\": ";
     append_json_string(out, status_name(entry.status));

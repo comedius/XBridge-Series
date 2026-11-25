@@ -51,6 +51,15 @@ Define a backend-neutral host graphics interface. Research and implement backend
 
 Never assume PC Direct3D 12 is equivalent to Xbox-specific graphics interfaces. Backend selection must be capability-based, not based only on GPU brand or model.
 
+### XB-NEXT-DEVELOPMENT-03 foundation (reviewed)
+
+- `documented` — The owner-approved direction is hybrid: compatible Xbox x64 guest code should ultimately run natively on host CPUs while Xbox-specific OS/services/runtime behavior is supplied by an XBridge compatibility layer. The existing interpreter remains the reference, diagnostic and fallback baseline; no user-facing backend switch or ADR acceptance was added.
+- `documented` — N1 proves only fixed, trusted, compiled-in synthetic routines selected by `NativeRoutineId`. Host feature observations are separate from guest semantics; injected AVX2 requires both OSXSAVE and XGETBV. The routines do not emit AVX2/BMI/FMA instructions, and no restricted worker process or security-boundary claim is part of this foundation.
+- `documented` — B1 adds a loader-private, bounded PE32+/AMD64 parser and `ExecutableLoader` for validation, mapping, `ABSOLUTE`/`DIR64` relocation and entry-point recording. It never executes an entry point; failures roll back guest-visible virtual mappings and mark unreleasable physical backing inaccessible. Physical-region removal and permission mutation remain outside the current memory contract.
+- `documented` — C1 defines thirteen neutral `ServiceId` tokens with pure abstract marker interfaces and a non-owning registry; no Xbox function signature or behavior is simulated. F1 emits deterministic, evidence-labeled string candidates, including exact C1 service tokens for reviewed library-family indicators, without readiness percentages or compatibility claims.
+- `documented` — The reviewed design boundary is recorded in `docs/architecture/XB_NEXT_03_EXECUTION_STRATEGY_DRAFT.md`, which is not an accepted ADR. Independent reviewer `PASS` and VS2026 Debug configure/build/CTest evidence are recorded in `docs/AGENT_TASKS.md`.
+- `unknown` — Real-game feasibility, guest instruction/API requirements, D3D12.X equivalence, future isolation of arbitrary native guest code and user-facing backend policy remain unresolved; this foundation does not establish Xbox Series X game compatibility.
+
 ## Non-goals for 0.1.0
 
 - Executing Xbox executables.

@@ -52,6 +52,12 @@ struct AnalysisEntry {
     std::string timestamp;                        // raw field label; never presented as a build date
     std::vector<std::string> uncertainties;       // explicit failure/limitation descriptions
     std::vector<std::string> component_mapping;   // candidate component names only; not approved architecture
+    // Additive, evidence-labeled linkage metadata. These are indicators and
+    // requirements derived only from already-observed fields; they never claim
+    // compatibility, executability or readiness.
+    std::vector<std::string> runtime_service_candidates;
+    std::vector<std::string> loader_requirements;
+    std::vector<std::string> unsupported_or_unknown_structures;
     DetectionStatus status{DetectionStatus::Unknown};
 };
 

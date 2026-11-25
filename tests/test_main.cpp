@@ -13,6 +13,9 @@
 #include "xbridge/memory/guest_region.hpp"
 #include "xbridge/host/execution_policy.hpp"
 #include "xbridge/analysis/game_intelligence.hpp"
+#include "xbridge/execution/native_execution_backend.hpp"
+#include "xbridge/loader/executable_loader.hpp"
+#include "xbridge/runtime/system_services.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -23,6 +26,7 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -4852,11 +4856,12 @@ void test_analysis_report_json_fields_escaping_and_determinism() {
     report.entries.push_back(entry);
 
     const std::string json = report.to_json();
-    const std::array<std::string_view, 18U> keys{{
+    const std::array<std::string_view, 21U> keys{{
         "source_directory", "notes", "relative_path", "size_bytes", "file_type",
         "architecture", "platform_indicators", "pe_fields", "imports", "exports",
         "relocation_types", "debug_types", "dependencies", "resource_kinds", "timestamp",
-        "uncertainties", "component_mapping", "status"}};
+        "uncertainties", "component_mapping", "runtime_service_candidates",
+        "loader_requirements", "unsupported_or_unknown_structures", "status"}};
     for (const std::string_view key : keys) {
         const std::string needle = "\"" + std::string(key) + "\"";
         check(analysis_text_contains(json, needle),
@@ -5149,6 +5154,1286 @@ void test_analysis_dll_characteristics_exact_output_regression() {
     analysis_cleanup_fixture(fixture);
 }
 
+// XB-NEXT-DEVELOPMENT-03-N1 — synthetic native execution proof. No host CPUID
+// result is consulted: every feature snapshot below is injected by the test.
+
+static_assert(execution::NativeRoutineId::LoadViaMemory ==
+              execution::NativeRoutineId::LoadU64ViaMemory);
+static_assert(execution::NativeRoutineId::StoreViaMemory ==
+              execution::NativeRoutineId::StoreU64ViaMemory);
+static_assert(execution::NativeRoutineId::ServiceTransition ==
+              execution::NativeRoutineId::RequestService);
+
+class MutableCpuFeatureDetector final : public execution::ICpuFeatureDetector {
+public:
+    execution::CpuFeatureSet features{};
+
+    [[nodiscard]] execution::CpuFeatureSet detect() const noexcept override { return features; }
+    [[nodiscard]] execution::CpuFeatureDetectionError last_error() const noexcept override {
+        return execution::CpuFeatureDetectionError::None;
+    }
+};
+
+class NativeFailingMemory final : public memory::IGuestVirtualMemory {
+public:
+    bool fail_read{false};
+    bool fail_write{false};
+    std::uint64_t read_calls{0U};
+    std::uint64_t write_calls{0U};
+
+    [[nodiscard]] memory::MemoryResult fetch(
+        memory::GuestVirtualAddress address, std::span<std::uint8_t> destination) noexcept override {
+        return read(address, destination);
+    }
+
+    [[nodiscard]] memory::MemoryResult read(
+        memory::GuestVirtualAddress address, std::span<std::uint8_t> destination) noexcept override {
+        ++read_calls;
+        if (fail_read) {
+            return memory::MemoryResult::failure(
+                memory::MemoryFault::AccessDenied, memory::MemoryAccess::Read,
+                memory::MemoryAccessContext::Data, address.value, destination.size());
+        }
+        for (std::uint8_t& byte : destination) {
+            byte = 0U;
+        }
+        return memory::MemoryResult::success(
+            memory::MemoryAccess::Read, memory::MemoryAccessContext::Data, address.value,
+            destination.size(), destination.size());
+    }
+
+    [[nodiscard]] memory::MemoryResult write(
+        memory::GuestVirtualAddress address, std::span<const std::uint8_t> source) noexcept override {
+        ++write_calls;
+        if (fail_write) {
+            return memory::MemoryResult::failure(
+                memory::MemoryFault::AccessDenied, memory::MemoryAccess::Write,
+                memory::MemoryAccessContext::Data, address.value, source.size());
+        }
+        return memory::MemoryResult::success(
+            memory::MemoryAccess::Write, memory::MemoryAccessContext::Data, address.value,
+            source.size(), source.size());
+    }
+};
+
+execution::CpuFeatureSet native_baseline_features() noexcept {
+    execution::CpuFeatureSet features{};
+    features.baseline_x64 = true;
+    return features;
+}
+
+execution::CpuFeatureSet native_all_features() noexcept {
+    execution::CpuFeatureSet features{};
+    features.baseline_x64 = true;
+    features.avx2 = true;
+    features.bmi1 = true;
+    features.bmi2 = true;
+    features.fma = true;
+    features.osxsave = true;
+    features.xgetbv = true;
+    return features;
+}
+
+void test_native_feature_detection_and_gating() {
+    using namespace xbridge;
+
+    const execution::CpuFeatureSet empty_features{};
+    const execution::FixedCpuFeatureDetector empty_detector(empty_features);
+    const auto empty = empty_detector.detect();
+    check(!empty.baseline_x64 && !empty.avx2 && !empty.bmi1 && !empty.bmi2 &&
+              !empty.fma && !empty.osxsave && !empty.xgetbv &&
+              empty_detector.last_error() == execution::CpuFeatureDetectionError::None,
+          "fixed detector reports an injected empty snapshot with no detection error");
+
+    execution::CpuFeatureSet mixed = native_all_features();
+    mixed.avx2 = false;
+    mixed.fma = false;
+    const execution::FixedCpuFeatureDetector mixed_detector(mixed);
+    const auto observed = mixed_detector.detect();
+    check(observed.baseline_x64 && observed.bmi1 && observed.bmi2 &&
+              observed.osxsave && observed.xgetbv &&
+              !observed.avx2 && !observed.fma &&
+              observed.has(execution::CpuFeature::BaselineX64) &&
+              !observed.has(execution::CpuFeature::Avx2) &&
+              !observed.has(execution::CpuFeature::Fma),
+          "fixed detector reports each injected feature independently");
+
+    check(std::string_view(execution::to_string(execution::CpuFeature::BaselineX64)) ==
+              "BaselineX64" &&
+              std::string_view(execution::to_string(execution::CpuFeature::Avx2)) == "Avx2" &&
+              std::string_view(execution::to_string(execution::CpuFeature::Bmi1)) == "Bmi1" &&
+              std::string_view(execution::to_string(execution::CpuFeature::Bmi2)) == "Bmi2" &&
+              std::string_view(execution::to_string(execution::CpuFeature::Fma)) == "Fma" &&
+              std::string_view(execution::to_string(execution::CpuFeature::Osxsave)) ==
+                  "Osxsave" &&
+              std::string_view(execution::to_string(execution::CpuFeature::Xgetbv)) == "Xgetbv" &&
+              std::string_view(execution::to_string(
+                  execution::CpuFeatureDetectionError::UnsupportedPlatform)) ==
+                  "UnsupportedPlatform",
+          "feature and detector-error names are stable and evidence-labeled");
+
+    memory::GuestMemory memory(64U);
+    memory::GuestMemoryView view(memory);
+    execution::GuestExecutionContext context(view);
+    context.registers().gprs[0U] = 0xDEADBEEFCAFEF00DULL;
+    const auto original = context.registers();
+
+    execution::NativeExecutionBackend empty_backend(empty_detector);
+    check(!empty_backend.can_execute(execution::NativeRoutineId::Nop) &&
+              !empty_backend.can_execute(execution::NativeRoutineId::Avx2Gate),
+          "baseline routines require an injected baseline x64 feature");
+    const auto gated = empty_backend.execute(execution::NativeRoutineId::MovImm32, context);
+    check(gated.error == execution::NativeExecutionError::UnsupportedFeature &&
+              gated.native_calls == 0U && context.registers().gprs[0U] == original.gprs[0U] &&
+              gated.registers.gprs[0U] == original.gprs[0U],
+          "unsupported features fail before routine mutation and native_calls stays zero");
+
+    const auto unknown_id = static_cast<execution::NativeRoutineId>(99);
+    const auto unknown = empty_backend.execute(unknown_id, context);
+    check(!empty_backend.can_execute(unknown_id) &&
+              unknown.error == execution::NativeExecutionError::UnknownRoutine &&
+              unknown.native_calls == 0U && context.registers().gprs[0U] == original.gprs[0U],
+          "unknown routine IDs fail without executing or mutating context");
+
+    execution::NativeExecutionBackend mixed_backend(mixed_detector);
+    check(mixed_backend.can_execute(execution::NativeRoutineId::Nop) &&
+              mixed_backend.can_execute(execution::NativeRoutineId::Bmi1Gate) &&
+              mixed_backend.can_execute(execution::NativeRoutineId::Bmi2Gate) &&
+              !mixed_backend.can_execute(execution::NativeRoutineId::Avx2Gate) &&
+              !mixed_backend.can_execute(execution::NativeRoutineId::FmaGate),
+          "optional routines are gated strictly by their own injected feature bits");
+
+    execution::CpuFeatureSet missing_osxsave = native_all_features();
+    missing_osxsave.osxsave = false;
+    const execution::FixedCpuFeatureDetector missing_osxsave_detector(missing_osxsave);
+    const auto missing_osxsave_features = missing_osxsave_detector.detect();
+    const execution::NativeExecutionBackend missing_osxsave_backend(missing_osxsave_detector);
+    check(!missing_osxsave_features.avx2 &&
+              !missing_osxsave_features.has(execution::CpuFeature::Avx2) &&
+              !missing_osxsave_backend.can_execute(execution::NativeRoutineId::Avx2Gate),
+          "injected AVX2 requires OSXSAVE before detection or native gating");
+
+    execution::CpuFeatureSet missing_xgetbv = native_all_features();
+    missing_xgetbv.xgetbv = false;
+    const execution::FixedCpuFeatureDetector missing_xgetbv_detector(missing_xgetbv);
+    const auto missing_xgetbv_features = missing_xgetbv_detector.detect();
+    const execution::NativeExecutionBackend missing_xgetbv_backend(missing_xgetbv_detector);
+    check(!missing_xgetbv_features.avx2 &&
+              !missing_xgetbv_features.has(execution::CpuFeature::Avx2) &&
+              !missing_xgetbv_backend.can_execute(execution::NativeRoutineId::Avx2Gate),
+          "injected AVX2 requires XGETBV before detection or native gating");
+
+    const execution::ExecutionBackendSelector selector(empty_detector);
+    check(selector.select(execution::NativeRoutineId::Nop,
+                          execution::ExecutionBackendPreference::Automatic) ==
+              execution::ExecutionBackendKind::Interpreter &&
+              selector.select(execution::NativeRoutineId::Nop,
+                              execution::ExecutionBackendPreference::Interpreter) ==
+                  execution::ExecutionBackendKind::Interpreter &&
+              selector.select(execution::NativeRoutineId::Nop,
+                              execution::ExecutionBackendPreference::Native) ==
+                  execution::ExecutionBackendKind::Native,
+          "selector honors explicit preferences and automatic fallback before execution");
+    check(selector.select(execution::NativeRoutineId::Avx2Gate,
+                          execution::ExecutionBackendPreference::Automatic) ==
+              execution::ExecutionBackendKind::Interpreter,
+          "automatic selection falls back to interpreter for an unsupported optional routine");
+
+    check(std::string_view(execution::to_string(
+              execution::ExecutionBackendPreference::Automatic)) == "Automatic" &&
+              std::string_view(execution::to_string(
+                  execution::ExecutionBackendKind::Interpreter)) == "Interpreter" &&
+              std::string_view(execution::to_string(
+                  execution::NativeExecutionError::UnsupportedFeature)) ==
+                  "UnsupportedFeature" &&
+              std::string_view(execution::to_string(
+                  execution::NativeExecutionError::UnknownRoutine)) == "UnknownRoutine",
+          "backend preference, backend kind and error names are stable");
+
+    MutableCpuFeatureDetector mutable_detector;
+    mutable_detector.features = native_baseline_features();
+    execution::NativeExecutionBackend snapshot(mutable_detector);
+    check(snapshot.can_execute(execution::NativeRoutineId::Nop) &&
+              !snapshot.can_execute(execution::NativeRoutineId::Avx2Gate),
+          "backend can execute injected baseline routines");
+    mutable_detector.features.avx2 = true;
+    check(mutable_detector.detect().avx2 &&
+              !snapshot.can_execute(execution::NativeRoutineId::Avx2Gate),
+          "backend keeps the detector snapshot taken at construction");
+}
+
+void test_native_backend_routines_and_interpreter_parity() {
+    using namespace xbridge;
+
+    const execution::FixedCpuFeatureDetector detector(native_all_features());
+    execution::NativeExecutionBackend backend(detector);
+    memory::GuestMemory memory(128U);
+    memory::GuestMemoryView view(memory);
+    execution::GuestExecutionContext context(view);
+
+    context.registers().gprs[0U] = 0x1234U;
+    const auto nop = backend.execute(execution::NativeRoutineId::Nop, context);
+    check(nop.error == execution::NativeExecutionError::None && nop.native_calls == 1U &&
+              context.registers().gprs[0U] == 0x1234U,
+          "native Nop succeeds with one native call and no register mutation");
+
+    memory::GuestMemory interpreter_memory(128U);
+    cpu::X64CpuState interpreter_state;
+    const std::uint8_t mov_imm_bytes[] = {0xB8U, 0x78U, 0x56U, 0x34U, 0x12U};
+    check(cpu::step_x64_instruction(std::span<const std::uint8_t>(mov_imm_bytes),
+                                    interpreter_state, interpreter_memory) ==
+              cpu::X64ExecuteStatus::Ok,
+          "interpreter MOV EAX,imm32 parity instruction executes");
+    const auto mov_imm = backend.execute(execution::NativeRoutineId::MovImm32, context);
+    check(mov_imm.error == execution::NativeExecutionError::None &&
+              mov_imm.native_calls == 1U &&
+              context.registers().gprs[0U] == execution::kMovImm32Immediate &&
+              context.registers().gprs[0U] == interpreter_state.gpr(cpu::X64GeneralRegister::Rax),
+          "native MovImm32 matches the interpreter and zero-extends its 32-bit immediate");
+
+    cpu::X64CpuState interpreter_move_state;
+    interpreter_move_state.gpr(cpu::X64GeneralRegister::Rcx) = 0x1122334455667788ULL;
+    const std::uint8_t mov_reg_bytes[] = {0x48U, 0x89U, 0xC8U};
+    check(cpu::step_x64_instruction(std::span<const std::uint8_t>(mov_reg_bytes),
+                                    interpreter_move_state, interpreter_memory) ==
+              cpu::X64ExecuteStatus::Ok,
+          "interpreter MOV RAX,RCX parity instruction executes");
+    execution::GuestRegisterState move_registers{};
+    move_registers.gprs[1U] = 0x1122334455667788ULL;
+    context.set_registers(move_registers);
+    const auto mov_reg = backend.execute(execution::NativeRoutineId::MovRegToReg, context);
+    check(mov_reg.error == execution::NativeExecutionError::None &&
+              mov_reg.native_calls == 1U &&
+              context.registers().gprs[0U] ==
+                  interpreter_move_state.gpr(cpu::X64GeneralRegister::Rax),
+          "native MovRegToReg matches the interpreter's register-to-register result");
+
+    execution::GuestRegisterState add_registers{};
+    add_registers.gprs[0U] = 0xFFFFFFFFULL;
+    context.set_registers(add_registers);
+    const auto add = backend.execute(execution::NativeRoutineId::AddImm32, context);
+    check(add.error == execution::NativeExecutionError::None && add.native_calls == 1U &&
+              context.registers().gprs[0U] == 9U,
+          "native AddImm32 wraps in 32 bits and zero-extends the result");
+
+    constexpr std::uint64_t load_value = 0x1122334455667788ULL;
+    std::vector<std::uint8_t> seed(8U, 0U);
+    analysis_put_u64(seed, 0U, load_value);
+    const auto seeded = view.write(memory::GuestVirtualAddress{32U},
+                                   std::span<const std::uint8_t>(seed.data(), seed.size()));
+    check(seeded.ok, "native memory test seeds a synthetic little-endian u64");
+    execution::GuestRegisterState load_registers{};
+    load_registers.gprs[1U] = 32U;
+    context.set_registers(load_registers);
+    const auto load = backend.execute(execution::NativeRoutineId::LoadViaMemory, context);
+    check(load.error == execution::NativeExecutionError::None && load.native_calls == 1U &&
+              context.registers().gprs[0U] == load_value,
+          "native LoadU64ViaMemory reads eight little-endian bytes through the memory seam");
+
+    constexpr std::uint64_t store_value = 0x8877665544332211ULL;
+    std::vector<std::uint8_t> expected_store(8U, 0U);
+    analysis_put_u64(expected_store, 0U, store_value);
+    execution::GuestRegisterState store_registers{};
+    store_registers.gprs[0U] = store_value;
+    store_registers.gprs[1U] = 40U;
+    context.set_registers(store_registers);
+    const auto store = backend.execute(execution::NativeRoutineId::StoreViaMemory, context);
+    std::vector<std::uint8_t> stored(8U, 0U);
+    const auto read_store = view.read(memory::GuestVirtualAddress{40U},
+                                      std::span<std::uint8_t>(stored.data(), stored.size()));
+    check(store.error == execution::NativeExecutionError::None && store.native_calls == 1U &&
+              read_store.ok && stored == expected_store,
+          "native StoreU64ViaMemory writes eight little-endian bytes through the memory seam");
+
+    execution::GuestRegisterState transition_registers{};
+    transition_registers.gprs[2U] = 7U;
+    transition_registers.gprs[3U] = 0xABCDU;
+    context.set_registers(transition_registers);
+    const auto transition = backend.execute(execution::NativeRoutineId::ServiceTransition, context);
+    check(transition.error == execution::NativeExecutionError::None &&
+              transition.native_calls == 1U &&
+              transition.transition.kind == execution::GuestHostTransitionKind::ServiceRequest &&
+              transition.transition.service_id == 7U &&
+              transition.transition.payload == 0xABCDU &&
+              context.last_transition().kind == transition.transition.kind &&
+              context.last_transition().service_id == transition.transition.service_id &&
+              context.last_transition().payload == transition.transition.payload,
+          "native RequestService records a synthetic guest/host service transition");
+
+    struct GateCase {
+        execution::NativeRoutineId routine;
+        std::uint64_t left;
+        std::uint64_t right;
+        std::uint64_t expected;
+    };
+    const std::array<GateCase, 4U> gates{{
+        {execution::NativeRoutineId::Avx2Gate, 0xF0F0U, 0x0FF0U, 0xFF00U},
+        {execution::NativeRoutineId::Bmi1Gate, 0xFFFFU, 0x0F0FU, 0xF0F0U},
+        {execution::NativeRoutineId::Bmi2Gate, 0xF0F0U, 0x0F0FU, 0xFFFFU},
+        {execution::NativeRoutineId::FmaGate, 0x12345678ULL, 0x10ULL, 0x12345688ULL},
+    }};
+    for (const GateCase& gate_case : gates) {
+        execution::GuestRegisterState gate_registers{};
+        gate_registers.gprs[0U] = gate_case.left;
+        gate_registers.gprs[1U] = gate_case.right;
+        context.set_registers(gate_registers);
+        const auto result = backend.execute(gate_case.routine, context);
+        check(result.error == execution::NativeExecutionError::None &&
+                  result.native_calls == 1U &&
+                  context.registers().gprs[0U] == gate_case.expected,
+              "feature-gated synthetic routine applies its documented plain-C++ operation");
+    }
+
+    execution::GuestRegisterState before_unknown{};
+    before_unknown.gprs[0U] = 0x55U;
+    context.set_registers(before_unknown);
+    const auto unknown = backend.execute(static_cast<execution::NativeRoutineId>(99), context);
+    check(unknown.error == execution::NativeExecutionError::UnknownRoutine &&
+              unknown.native_calls == 0U && context.registers().gprs[0U] == 0x55U,
+          "unknown native routine does not mutate registers or count a native call");
+
+    NativeFailingMemory failing_read;
+    failing_read.fail_read = true;
+    execution::GuestExecutionContext read_failure_context(failing_read);
+    execution::GuestRegisterState failing_read_registers{};
+    failing_read_registers.gprs[1U] = 0U;
+    read_failure_context.set_registers(failing_read_registers);
+    const auto failed_load =
+        backend.execute(execution::NativeRoutineId::LoadU64ViaMemory, read_failure_context);
+    check(failed_load.error == execution::NativeExecutionError::MemoryAccessError &&
+              failed_load.native_calls == 0U && failing_read.read_calls == 1U &&
+              read_failure_context.registers().gprs[0U] == 0U,
+          "native load memory failure is explicit and leaves the destination unchanged");
+
+    NativeFailingMemory failing_write;
+    failing_write.fail_write = true;
+    execution::GuestExecutionContext write_failure_context(failing_write);
+    execution::GuestRegisterState failing_write_registers{};
+    failing_write_registers.gprs[0U] = 0x99U;
+    failing_write_registers.gprs[1U] = 0U;
+    write_failure_context.set_registers(failing_write_registers);
+    const auto failed_store =
+        backend.execute(execution::NativeRoutineId::StoreU64ViaMemory, write_failure_context);
+    check(failed_store.error == execution::NativeExecutionError::MemoryAccessError &&
+              failed_store.native_calls == 0U && failing_write.write_calls == 1U,
+          "native store memory failure is explicit and counts no native call");
+
+    check(std::string_view(execution::to_string(execution::GuestHostTransitionKind::ServiceRequest)) ==
+              "ServiceRequest" &&
+              std::string_view(execution::to_string(execution::GuestHostTransitionKind::NormalExit)) ==
+                  "NormalExit" &&
+              std::string_view(execution::to_string(execution::GuestHostTransitionKind::FaultExit)) ==
+                  "FaultExit",
+          "guest/host transition kind names are stable");
+}
+
+void test_guest_execution_context_stack_and_memory_failures() {
+    using namespace xbridge;
+
+    memory::GuestMemory memory(64U);
+    memory::GuestMemoryView view(memory);
+    execution::GuestExecutionContext context(view);
+    context.set_stack(execution::GuestStack{memory::GuestVirtualAddress{16U}, 32U, 0U});
+
+    constexpr std::uint64_t stack_value = 0x1122334455667788ULL;
+    check(context.push_u64(stack_value) && context.stack().pointer_offset == 8U,
+          "guest stack push advances the ascending pointer only after success");
+    std::vector<std::uint8_t> stored(8U, 0U);
+    std::vector<std::uint8_t> expected(8U, 0U);
+    analysis_put_u64(expected, 0U, stack_value);
+    const auto read_back = view.read(memory::GuestVirtualAddress{16U},
+                                     std::span<std::uint8_t>(stored.data(), stored.size()));
+    check(read_back.ok && stored == expected,
+          "guest stack push writes eight little-endian bytes to base plus offset");
+
+    std::uint64_t popped = 0U;
+    check(context.pop_u64(popped) && popped == stack_value &&
+              context.stack().pointer_offset == 0U,
+          "guest stack pop reads the value and retreats the pointer by eight bytes");
+
+    auto& registers = context.registers();
+    registers.gprs[15U] = 0xA5A5A5A5A5A5A5A5ULL;
+    registers.gpr(16U) = 0x1234U;
+    check(registers.gpr(16U) == 0U && !registers.has_gpr(16U) &&
+              registers.gprs[15U] == 0xA5A5A5A5A5A5A5A5ULL,
+          "out-of-range guest register access uses an isolated scratch and cannot mutate GPRs");
+
+    NativeFailingMemory failing;
+    failing.fail_read = true;
+    failing.fail_write = true;
+    execution::GuestExecutionContext failure_context(failing);
+
+    failure_context.set_stack(execution::GuestStack{memory::GuestVirtualAddress{8U}, 8U, 8U});
+    check(!failure_context.push_u64(1U) && failing.write_calls == 0U &&
+              failure_context.stack().pointer_offset == 8U,
+          "push at full stack capacity fails before any memory access or pointer mutation");
+
+    std::uint64_t untouched = 0xAAU;
+    failure_context.set_stack(execution::GuestStack{memory::GuestVirtualAddress{8U}, 8U, 0U});
+    check(!failure_context.pop_u64(untouched) && failing.read_calls == 0U &&
+              untouched == 0xAAU && failure_context.stack().pointer_offset == 0U,
+          "pop at empty stack fails before any memory access or output mutation");
+
+    failure_context.set_stack(execution::GuestStack{memory::GuestVirtualAddress{8U}, 16U, 0U});
+    failing.write_calls = 0U;
+    check(!failure_context.push_u64(2U) && failing.write_calls == 1U &&
+              failure_context.stack().pointer_offset == 0U,
+          "failed memory write leaves the stack pointer unchanged");
+
+    failure_context.set_stack(execution::GuestStack{memory::GuestVirtualAddress{8U}, 16U, 8U});
+    failing.read_calls = 0U;
+    untouched = 0xAAU;
+    check(!failure_context.pop_u64(untouched) && failing.read_calls == 1U &&
+              untouched == 0xAAU && failure_context.stack().pointer_offset == 8U,
+          "failed memory read leaves both the output value and stack pointer unchanged");
+
+    failure_context.set_stack(execution::GuestStack{
+        memory::GuestVirtualAddress{(std::numeric_limits<std::uint64_t>::max)() - 2U}, 16U, 8U});
+    failing.write_calls = 0U;
+    check(!failure_context.push_u64(3U) && failing.write_calls == 0U,
+          "stack address overflow is rejected before any memory access");
+}
+
+// XB-NEXT-DEVELOPMENT-03-B1 — bounded synthetic PE32+ loader fixtures. Every
+// byte is generated here; no real executable or game file is read.
+
+constexpr std::uint16_t loader_pe_offset = 0x80U;
+constexpr std::uint16_t loader_optional_size = 0xF0U;
+constexpr std::uint32_t loader_text_rva = 0x1000U;
+constexpr std::uint32_t loader_data_rva = 0x2000U;
+constexpr std::uint32_t loader_relocation_directory_rva = 0x2100U;
+constexpr std::size_t loader_text_raw_offset = 0x400U;
+constexpr std::size_t loader_data_raw_offset = 0x600U;
+constexpr std::uint32_t loader_section_raw_size = 0x200U;
+constexpr std::uint32_t loader_size_of_image = 0x4000U;
+constexpr std::uint64_t loader_image_base = 0x0000000140000000ULL;
+constexpr std::uint32_t loader_entry_rva = 0x1010U;
+
+struct LoaderRelocationEntry {
+    std::uint16_t type{10U};
+    std::uint32_t page_rva{0x2000U};
+    std::uint16_t offset{0x30U};
+};
+
+struct LoaderImageOptions {
+    std::uint64_t image_base{loader_image_base};
+    std::uint32_t entry_rva{loader_entry_rva};
+    std::uint16_t machine{0x8664U};
+    std::uint16_t section_count{2U};
+    std::uint16_t magic{0x020BU};
+    std::uint32_t section_alignment{0x1000U};
+    std::uint32_t file_alignment{0x200U};
+    std::uint64_t relocation_value{0x1122334400000000ULL};
+    std::vector<LoaderRelocationEntry> relocations{
+        LoaderRelocationEntry{10U, 0x2000U, 0x30U}};
+};
+
+std::vector<std::uint8_t> loader_make_pe32plus(const LoaderImageOptions& options =
+                                                   LoaderImageOptions{}) {
+    std::vector<std::uint8_t> bytes(0x1000U, std::uint8_t{0U});
+    bytes[0U] = static_cast<std::uint8_t>('M');
+    bytes[1U] = static_cast<std::uint8_t>('Z');
+    analysis_put_u32(bytes, 0x3CU, loader_pe_offset);
+
+    const std::size_t coff = static_cast<std::size_t>(loader_pe_offset) + 4U;
+    bytes[loader_pe_offset] = static_cast<std::uint8_t>('P');
+    bytes[loader_pe_offset + 1U] = static_cast<std::uint8_t>('E');
+    analysis_put_u16(bytes, coff, options.machine);
+    analysis_put_u16(bytes, coff + 2U, options.section_count);
+    analysis_put_u16(bytes, coff + 16U, loader_optional_size);
+    analysis_put_u16(bytes, coff + 18U, 0x0022U);
+
+    const std::size_t optional = coff + 20U;
+    analysis_put_u16(bytes, optional, options.magic);
+    analysis_put_u32(bytes, optional + 16U, options.entry_rva);
+    analysis_put_u64(bytes, optional + 24U, options.image_base);
+    analysis_put_u32(bytes, optional + 32U, options.section_alignment);
+    analysis_put_u32(bytes, optional + 36U, options.file_alignment);
+    analysis_put_u32(bytes, optional + 56U, loader_size_of_image);
+    analysis_put_u32(bytes, optional + 60U, 0x400U);
+    analysis_put_u32(bytes, optional + 108U, 16U);
+
+    const std::size_t directory_base = optional + 112U;
+    if (!options.relocations.empty()) {
+        std::vector<std::uint32_t> pages;
+        for (const LoaderRelocationEntry& entry : options.relocations) {
+            if (std::find(pages.begin(), pages.end(), entry.page_rva) == pages.end()) {
+                pages.push_back(entry.page_rva);
+            }
+        }
+
+        std::uint32_t directory_size = 0U;
+        for (const std::uint32_t page : pages) {
+            const auto count = static_cast<std::uint32_t>(std::count_if(
+                options.relocations.begin(), options.relocations.end(),
+                [page](const LoaderRelocationEntry& entry) { return entry.page_rva == page; }));
+            directory_size += 8U + 2U * count;
+        }
+        analysis_put_u32(bytes, directory_base + 5U * 8U, loader_relocation_directory_rva);
+        analysis_put_u32(bytes, directory_base + 5U * 8U + 4U, directory_size);
+
+        const std::size_t blocks =
+            loader_data_raw_offset +
+            static_cast<std::size_t>(loader_relocation_directory_rva - loader_data_rva);
+        std::uint32_t consumed = 0U;
+        for (const std::uint32_t page : pages) {
+            std::vector<std::size_t> members;
+            for (std::size_t index = 0U; index < options.relocations.size(); ++index) {
+                if (options.relocations[index].page_rva == page) {
+                    members.push_back(index);
+                }
+            }
+            const std::uint32_t block_size =
+                8U + static_cast<std::uint32_t>(2U * members.size());
+            const std::size_t block = blocks + consumed;
+            analysis_put_u32(bytes, block, page);
+            analysis_put_u32(bytes, block + 4U, block_size);
+            for (std::size_t member = 0U; member < members.size(); ++member) {
+                const LoaderRelocationEntry& entry = options.relocations[members[member]];
+                analysis_put_u16(bytes, block + 8U + member * 2U,
+                                 static_cast<std::uint16_t>(
+                                     (entry.type << 12U) | (entry.offset & 0x0FFFU)));
+                if (entry.page_rva >= loader_data_rva) {
+                    const std::size_t target = loader_data_raw_offset +
+                        static_cast<std::size_t>(entry.page_rva - loader_data_rva) + entry.offset;
+                    analysis_put_u64(bytes, target, options.relocation_value);
+                }
+            }
+            consumed += block_size;
+        }
+    }
+
+    const std::size_t section_table = optional + loader_optional_size;
+    analysis_put_ascii(bytes, section_table, ".text");
+    analysis_put_u32(bytes, section_table + 8U, 0x1000U);
+    analysis_put_u32(bytes, section_table + 12U, loader_text_rva);
+    analysis_put_u32(bytes, section_table + 16U, loader_section_raw_size);
+    analysis_put_u32(bytes, section_table + 20U,
+                     static_cast<std::uint32_t>(loader_text_raw_offset));
+    analysis_put_u32(bytes, section_table + 36U,
+                     loader::kSectionMemRead | loader::kSectionMemExecute);
+
+    const std::size_t data_section = section_table + 40U;
+    analysis_put_ascii(bytes, data_section, ".data");
+    analysis_put_u32(bytes, data_section + 8U, 0x1000U);
+    analysis_put_u32(bytes, data_section + 12U, loader_data_rva);
+    analysis_put_u32(bytes, data_section + 16U, loader_section_raw_size);
+    analysis_put_u32(bytes, data_section + 20U,
+                     static_cast<std::uint32_t>(loader_data_raw_offset));
+    analysis_put_u32(bytes, data_section + 36U,
+                     loader::kSectionMemRead | loader::kSectionMemWrite);
+
+    if (options.section_count >= 3U) {
+        constexpr std::uint32_t extra_rva = 0x3000U;
+        constexpr std::size_t extra_raw_offset = 0x800U;
+        const std::size_t extra_section = data_section + 40U;
+        analysis_put_ascii(bytes, extra_section, ".extra");
+        analysis_put_u32(bytes, extra_section + 8U, 0x1000U);
+        analysis_put_u32(bytes, extra_section + 12U, extra_rva);
+        analysis_put_u32(bytes, extra_section + 16U, loader_section_raw_size);
+        analysis_put_u32(bytes, extra_section + 20U, extra_raw_offset);
+        analysis_put_u32(bytes, extra_section + 36U,
+                         loader::kSectionMemRead | loader::kSectionMemWrite);
+    }
+
+    bytes[loader_text_raw_offset + (options.entry_rva - loader_text_rva)] = 0x90U;
+    return bytes;
+}
+
+std::uint64_t loader_load_u64(std::span<const std::uint8_t> bytes) noexcept {
+    std::uint64_t value = 0U;
+    const std::size_t count = (std::min)(bytes.size(), std::size_t{8U});
+    for (std::size_t index = 0U; index < count; ++index) {
+        value |= static_cast<std::uint64_t>(bytes[index]) << (index * 8U);
+    }
+    return value;
+}
+
+void test_loader_synthetic_valid_lifecycle_and_permissions() {
+    using namespace xbridge;
+
+    const auto bytes = loader_make_pe32plus();
+    loader::LoadOptions options;
+    options.image_base_override = 0x0000000140010000ULL;
+
+    memory::GuestPhysicalMemory physical;
+    memory::GuestAddressSpace address_space(physical);
+    loader::ExecutableLoader image_loader(address_space, physical);
+
+    check(image_loader.state() == loader::LoaderState::Unloaded &&
+              loader::can_transition(loader::LoaderState::Unloaded,
+                                     loader::LoaderState::Validated) &&
+              !loader::can_transition(loader::LoaderState::Unloaded,
+                                      loader::LoaderState::Ready),
+          "loader starts unloaded and exposes the documented state transitions");
+
+    check(image_loader.validate(std::span<const std::uint8_t>(bytes.data(), bytes.size()),
+                                options) == loader::LoadError::None &&
+              image_loader.state() == loader::LoaderState::Validated &&
+              image_loader.image_base() == options.image_base_override &&
+              image_loader.entry_point() == options.image_base_override + loader_entry_rva &&
+              image_loader.image_info().sections.size() == 2U,
+          "valid synthetic PE32+ image validates with two sections and a computed entry point");
+
+    check(image_loader.map() == loader::LoadError::None &&
+              image_loader.state() == loader::LoaderState::Mapped &&
+              image_loader.virtual_mappings().size() == 2U &&
+              image_loader.physical_regions().size() == 2U,
+          "map creates two virtual mappings and two physical backing regions");
+
+    const auto& text_map = image_loader.virtual_mappings()[0U];
+    const auto& data_map = image_loader.virtual_mappings()[1U];
+    check(text_map.virtual_base == options.image_base_override + loader_text_rva &&
+              data_map.virtual_base == options.image_base_override + loader_data_rva &&
+              text_map.length == 0x1000U && data_map.length == 0x1000U,
+          "sections are mapped at the effective image base plus their section RVAs");
+
+    memory::GuestPhysicalAddress translated{};
+    const auto text_read = address_space.translate(
+        memory::GuestVirtualAddress{options.image_base_override + loader_entry_rva}, 1U,
+        memory::MemoryAccess::Read, memory::MemoryAccessContext::Data, translated);
+    const auto text_write = address_space.translate(
+        memory::GuestVirtualAddress{options.image_base_override + loader_entry_rva}, 1U,
+        memory::MemoryAccess::Write, memory::MemoryAccessContext::Data, translated);
+    const auto data_write = address_space.translate(
+        memory::GuestVirtualAddress{options.image_base_override + 0x2030U}, 1U,
+        memory::MemoryAccess::Write, memory::MemoryAccessContext::Data, translated);
+    check(text_read.ok && !text_write.ok &&
+              text_write.fault == memory::MemoryFault::AccessDenied && data_write.ok,
+          "section characteristics produce read-only execute text and writable data mappings");
+
+    std::array<std::uint8_t, 1U> sentinel{};
+    const auto sentinel_read = address_space.read(
+        memory::GuestVirtualAddress{options.image_base_override + loader_entry_rva},
+        std::span<std::uint8_t>(sentinel.data(), sentinel.size()));
+    check(sentinel_read.ok && sentinel[0U] == 0x90U,
+          "loader maps entry-point bytes without executing them");
+
+    const std::uint64_t target = options.image_base_override + 0x2030U;
+    std::array<std::uint8_t, 8U> before{};
+    const auto before_read = address_space.read(
+        memory::GuestVirtualAddress{target},
+        std::span<std::uint8_t>(before.data(), before.size()));
+    check(before_read.ok && loader_load_u64(std::span<const std::uint8_t>(
+                                before.data(), before.size())) == 0x1122334400000000ULL,
+          "synthetic DIR64 target contains the injected little-endian value before relocation");
+
+    check(image_loader.relocate() == loader::LoadError::None &&
+              image_loader.state() == loader::LoaderState::Relocated,
+          "DIR64 relocation succeeds on a synthetic image");
+
+    std::array<std::uint8_t, 8U> after{};
+    const auto after_read = address_space.read(
+        memory::GuestVirtualAddress{target},
+        std::span<std::uint8_t>(after.data(), after.size()));
+    check(after_read.ok && loader_load_u64(std::span<const std::uint8_t>(
+                               after.data(), after.size())) == 0x1122334400010000ULL,
+          "DIR64 writes image-base-override minus PE ImageBase into the mapped target");
+
+    std::array<std::uint8_t, 1U> sentinel_after{};
+    const auto sentinel_after_read = address_space.read(
+        memory::GuestVirtualAddress{options.image_base_override + loader_entry_rva},
+        std::span<std::uint8_t>(sentinel_after.data(), sentinel_after.size()));
+    check(sentinel_after_read.ok && sentinel_after[0U] == 0x90U,
+          "relocation and prepare do not execute the recorded entry point");
+
+    check(image_loader.prepare() == loader::LoadError::None &&
+              image_loader.state() == loader::LoaderState::Ready,
+          "prepare records readiness after mapping and relocation only");
+    const auto diagnostic_before_unload = image_loader.first_memory_result();
+    const auto unload_error = image_loader.unload();
+    check(unload_error == loader::LoadError::None &&
+              image_loader.state() == loader::LoaderState::Unloaded &&
+              image_loader.virtual_mappings().empty() &&
+              image_loader.inaccessible_physical_regions().size() == 2U,
+          (std::string("successful unload returns None, clears virtual mappings and marks "
+                       "both backing regions inaccessible (error=") +
+           loader::to_string(unload_error) + ", state=" +
+           loader::to_string(image_loader.state()) + ", inaccessible=" +
+           std::to_string(image_loader.inaccessible_physical_regions().size()) + ")")
+              .c_str());
+
+    const auto diagnostic_after_unload = image_loader.first_memory_result();
+    const auto same_memory_result = [](const memory::MemoryResult& left,
+                                       const memory::MemoryResult& right) noexcept {
+        return left.ok == right.ok && left.fault == right.fault &&
+               left.access == right.access && left.context == right.context &&
+               left.address == right.address &&
+               left.requested_length == right.requested_length &&
+               left.completed_bytes == right.completed_bytes &&
+               left.translated_address == right.translated_address &&
+               left.region_base == right.region_base;
+    };
+    check(same_memory_result(diagnostic_before_unload, diagnostic_after_unload),
+          "successful unload does not create or report a new memory failure diagnostic");
+}
+
+void test_loader_validation_failure_boundaries() {
+    using namespace xbridge;
+
+    check(loader::can_transition(loader::LoaderState::Validated, loader::LoaderState::Mapped) &&
+              loader::can_transition(loader::LoaderState::Mapped, loader::LoaderState::Relocated) &&
+              loader::can_transition(loader::LoaderState::Relocated, loader::LoaderState::Ready) &&
+              loader::can_transition(loader::LoaderState::Ready, loader::LoaderState::Unloaded) &&
+              loader::can_transition(loader::LoaderState::Failed, loader::LoaderState::Unloaded) &&
+              !loader::can_transition(loader::LoaderState::Ready, loader::LoaderState::Mapped) &&
+              !loader::can_transition(loader::LoaderState::Failed, loader::LoaderState::Ready),
+          "loader state machine permits forward progress and rejects skipped or backward steps");
+
+    check(std::string_view(loader::to_string(loader::LoaderState::Ready)) == "Ready" &&
+              std::string_view(loader::to_string(loader::LoadError::UnsupportedRelocation)) ==
+                  "UnsupportedRelocation" &&
+              std::string_view(loader::to_string(loader::LoadError::InvalidRelocation)) ==
+                  "InvalidRelocation",
+          "loader state and error names are stable");
+
+    const auto valid = loader_make_pe32plus();
+    auto expect_validate_error = [](std::span<const std::uint8_t> bytes,
+                                    const loader::LoadOptions& options,
+                                    loader::LoadError expected, const char* message) {
+        memory::GuestPhysicalMemory physical;
+        memory::GuestAddressSpace address_space(physical);
+        loader::ExecutableLoader image_loader(address_space, physical);
+        check(image_loader.validate(bytes, options) == expected &&
+                  image_loader.state() == loader::LoaderState::Failed &&
+                  image_loader.last_error() == expected,
+              message);
+    };
+
+    const std::vector<std::uint8_t> truncated(valid.begin(), valid.begin() + 32);
+    expect_validate_error(std::span<const std::uint8_t>(truncated.data(), truncated.size()), {},
+                          loader::LoadError::TruncatedData,
+                          "truncated DOS/PE prefix is rejected as TruncatedData");
+
+    auto bad_mz = valid;
+    bad_mz[0U] = static_cast<std::uint8_t>('N');
+    expect_validate_error(std::span<const std::uint8_t>(bad_mz.data(), bad_mz.size()), {},
+                          loader::LoadError::InvalidHeader,
+                          "invalid DOS signature is rejected as InvalidHeader");
+
+    auto bad_signature = valid;
+    bad_signature[loader_pe_offset] = static_cast<std::uint8_t>('X');
+    expect_validate_error(std::span<const std::uint8_t>(bad_signature.data(),
+                                                        bad_signature.size()), {},
+                          loader::LoadError::InvalidHeader,
+                          "invalid PE signature is rejected as InvalidHeader");
+
+    LoaderImageOptions unsupported_machine;
+    unsupported_machine.machine = 0x014CU;
+    const auto machine_bytes = loader_make_pe32plus(unsupported_machine);
+    expect_validate_error(std::span<const std::uint8_t>(machine_bytes.data(),
+                                                        machine_bytes.size()), {},
+                          loader::LoadError::UnsupportedImage,
+                          "non-AMD64 machine is rejected as UnsupportedImage");
+
+    LoaderImageOptions pe32_options;
+    pe32_options.magic = 0x010BU;
+    const auto pe32_bytes = loader_make_pe32plus(pe32_options);
+    expect_validate_error(std::span<const std::uint8_t>(pe32_bytes.data(), pe32_bytes.size()), {},
+                          loader::LoadError::UnsupportedImage,
+                          "PE32 optional magic is rejected as UnsupportedImage");
+
+    auto unaligned = valid;
+    const std::size_t optional = static_cast<std::size_t>(loader_pe_offset) + 24U;
+    const std::size_t section_table = optional + loader_optional_size;
+    analysis_put_u32(unaligned, section_table + 12U, 0x1800U);
+    expect_validate_error(std::span<const std::uint8_t>(unaligned.data(), unaligned.size()), {},
+                          loader::LoadError::AlignmentError,
+                          "misaligned section RVA is rejected as AlignmentError");
+
+    auto overlap = valid;
+    analysis_put_u32(overlap, section_table + 40U + 12U, loader_text_rva);
+    expect_validate_error(std::span<const std::uint8_t>(overlap.data(), overlap.size()), {},
+                          loader::LoadError::Overlap,
+                          "overlapping virtual sections are rejected as Overlap");
+
+    auto excessive_sections = valid;
+    analysis_put_u16(excessive_sections, static_cast<std::size_t>(loader_pe_offset) + 6U, 200U);
+    expect_validate_error(std::span<const std::uint8_t>(excessive_sections.data(),
+                                                        excessive_sections.size()), {},
+                          loader::LoadError::LimitExceeded,
+                          "excessive section count is rejected as LimitExceeded");
+
+    auto huge_lfanew = valid;
+    analysis_put_u32(huge_lfanew, 0x3CU, 0xFFFFFFF0U);
+    expect_validate_error(std::span<const std::uint8_t>(huge_lfanew.data(), huge_lfanew.size()), {},
+                          loader::LoadError::TruncatedData,
+                          "out-of-range e_lfanew is rejected as TruncatedData");
+
+    loader::LoadOptions small_limit;
+    small_limit.limits.max_bytes = 16U;
+    expect_validate_error(std::span<const std::uint8_t>(valid.data(), valid.size()), small_limit,
+                          loader::LoadError::LimitExceeded,
+                          "image over an explicit byte limit is rejected as LimitExceeded");
+
+    loader::LoadOptions small_virtual;
+    small_virtual.limits.max_virtual_address = 1U;
+    expect_validate_error(std::span<const std::uint8_t>(valid.data(), valid.size()), small_virtual,
+                          loader::LoadError::Overflow,
+                          "image beyond the virtual-address limit is rejected as Overflow");
+
+    memory::GuestPhysicalMemory physical;
+    memory::GuestAddressSpace address_space(physical);
+    loader::ExecutableLoader sequence(address_space, physical);
+    check(sequence.map() == loader::LoadError::InvalidState &&
+              sequence.state() == loader::LoaderState::Failed,
+          "map before validate is rejected as InvalidState");
+}
+
+void test_loader_relocation_failure_paths_and_rollback() {
+    using namespace xbridge;
+
+    LoaderImageOptions unsupported_options;
+    unsupported_options.relocations.push_back(
+        LoaderRelocationEntry{3U, 0x2000U, 0x40U});
+    const auto unsupported_bytes = loader_make_pe32plus(unsupported_options);
+    loader::LoadOptions relocate_options;
+    relocate_options.image_base_override = 0x0000000140010000ULL;
+
+    memory::GuestPhysicalMemory unsupported_physical;
+    memory::GuestAddressSpace unsupported_space(unsupported_physical);
+    loader::ExecutableLoader unsupported_loader(unsupported_space, unsupported_physical);
+    check(unsupported_loader.validate(
+              std::span<const std::uint8_t>(unsupported_bytes.data(), unsupported_bytes.size()),
+              relocate_options) == loader::LoadError::None &&
+              unsupported_loader.map() == loader::LoadError::None,
+          "mixed DIR64 and unsupported relocation image validates and maps");
+
+    const std::uint64_t target = relocate_options.image_base_override + 0x2030U;
+    std::array<std::uint8_t, 8U> before{};
+    const auto before_read = unsupported_space.read(
+        memory::GuestVirtualAddress{target},
+        std::span<std::uint8_t>(before.data(), before.size()));
+    check(before_read.ok, "mixed relocation target is readable before relocation");
+
+    check(unsupported_loader.relocate() == loader::LoadError::UnsupportedRelocation &&
+              unsupported_loader.state() == loader::LoaderState::Failed,
+          "unsupported relocation after a valid DIR64 entry fails the whole relocation phase");
+    std::array<std::uint8_t, 8U> after{};
+    const auto after_read = unsupported_space.read(
+        memory::GuestVirtualAddress{target},
+        std::span<std::uint8_t>(after.data(), after.size()));
+    check(after_read.ok && after == before,
+          "two-phase relocation performs no writes when a later entry is unsupported");
+
+    LoaderImageOptions gap_options;
+    gap_options.relocations.push_back(LoaderRelocationEntry{10U, 0x3000U, 0x30U});
+    const auto gap_bytes = loader_make_pe32plus(gap_options);
+    memory::GuestPhysicalMemory gap_physical;
+    memory::GuestAddressSpace gap_space(gap_physical);
+    loader::ExecutableLoader gap_loader(gap_space, gap_physical);
+    check(gap_loader.validate(std::span<const std::uint8_t>(gap_bytes.data(), gap_bytes.size()),
+                              relocate_options) == loader::LoadError::None &&
+              gap_loader.map() == loader::LoadError::None &&
+              gap_loader.relocate() == loader::LoadError::InvalidRelocation,
+          "DIR64 target outside any mapped section is rejected as InvalidRelocation");
+    std::array<std::uint8_t, 8U> gap_after{};
+    const auto gap_read = gap_space.read(
+        memory::GuestVirtualAddress{target},
+        std::span<std::uint8_t>(gap_after.data(), gap_after.size()));
+    check(gap_read.ok && gap_after == before,
+          "invalid DIR64 target leaves the previously valid target unmodified");
+
+    const auto valid_bytes = loader_make_pe32plus();
+    memory::GuestPhysicalMemory rollback_physical;
+    memory::GuestAddressSpace rollback_space(rollback_physical);
+    constexpr std::uint64_t blocker_physical_base = 0x0000000100000000ULL;
+    const auto blocker_region =
+        rollback_physical.add_region(memory::GuestPhysicalAddress{blocker_physical_base},
+                                     0x1000U, memory::RegionKind::Normal,
+                                     memory::MemoryPermissions{true, true, false});
+    const auto blocker_map = rollback_space.map(
+        memory::GuestVirtualAddress{loader_image_base + loader_data_rva},
+        memory::GuestPhysicalAddress{blocker_physical_base}, 0x1000U,
+        memory::MemoryPermissions{true, true, false});
+    check(blocker_region.ok && blocker_map.ok,
+          "rollback fixture pre-occupies the second section's virtual range");
+
+    loader::ExecutableLoader rollback_loader(rollback_space, rollback_physical);
+    check(rollback_loader.validate(
+              std::span<const std::uint8_t>(valid_bytes.data(), valid_bytes.size()), {}) ==
+              loader::LoadError::None,
+          "rollback fixture validates the synthetic image");
+    check(rollback_loader.map() == loader::LoadError::MemoryFailure &&
+              rollback_loader.state() == loader::LoaderState::Failed &&
+              !rollback_loader.first_memory_result().ok,
+          "mid-map virtual mapping failure is reported as MemoryFailure");
+    check(rollback_loader.virtual_mappings().empty() &&
+              rollback_loader.inaccessible_physical_regions().size() == 2U,
+          (std::string("mid-map failure rolls back virtual mappings and records both backing "
+                       "regions as inaccessible (virtual=") +
+           std::to_string(rollback_loader.virtual_mappings().size()) +
+           ", inaccessible=" +
+           std::to_string(rollback_loader.inaccessible_physical_regions().size()) + ")")
+              .c_str());
+
+    std::array<std::uint8_t, 1U> probe{};
+    const auto probe_read = rollback_space.read(
+        memory::GuestVirtualAddress{loader_image_base + 0x1000U},
+        std::span<std::uint8_t>(probe.data(), probe.size()));
+    check(!probe_read.ok,
+          "rolled-back first section is no longer readable through GuestAddressSpace");
+
+    LoaderImageOptions three_section_options;
+    three_section_options.section_count = 3U;
+    const auto three_section_bytes = loader_make_pe32plus(three_section_options);
+    constexpr std::uint64_t overflow_base = 0x0000000140020000ULL;
+    loader::LoadOptions overflow_options;
+    overflow_options.image_base_override = overflow_base;
+    overflow_options.limits.max_physical_address = overflow_base + 0x2000U + 0x100U;
+
+    memory::GuestPhysicalMemory overflow_physical;
+    memory::GuestAddressSpace overflow_space(overflow_physical);
+    loader::ExecutableLoader overflow_loader(overflow_space, overflow_physical);
+    check(overflow_loader.validate(
+              std::span<const std::uint8_t>(three_section_bytes.data(),
+                                            three_section_bytes.size()),
+              overflow_options) == loader::LoadError::None &&
+              overflow_loader.state() == loader::LoaderState::Validated &&
+              overflow_loader.image_info().sections.size() == 3U,
+          "three-section fixture validates with an injected third section");
+    check(overflow_loader.map() == loader::LoadError::Overflow &&
+              overflow_loader.state() == loader::LoaderState::Failed &&
+              overflow_loader.virtual_mappings().empty() &&
+              overflow_loader.inaccessible_physical_regions().size() == 2U,
+          (std::string("post-map physical limit rollback reports Overflow and clears two "
+                       "mappings (error=") +
+           loader::to_string(overflow_loader.last_error()) + ", state=" +
+           loader::to_string(overflow_loader.state()) + ", virtual=" +
+           std::to_string(overflow_loader.virtual_mappings().size()) + ", inaccessible=" +
+           std::to_string(overflow_loader.inaccessible_physical_regions().size()) + ")")
+              .c_str());
+
+    std::array<std::uint8_t, 1U> overflow_probe{};
+    const auto overflow_probe_read = overflow_space.read(
+        memory::GuestVirtualAddress{overflow_base + loader_text_rva},
+        std::span<std::uint8_t>(overflow_probe.data(), overflow_probe.size()));
+    check(!overflow_probe_read.ok,
+          "rolled-back first section is no longer readable after Overflow rollback");
+}
+
+// XB-NEXT-DEVELOPMENT-03-C1 — neutral runtime service surface and registry.
+
+struct SyntheticSystemService final : runtime::ISystemService {};
+struct SyntheticGraphicsService final : runtime::IGraphicsService {};
+
+void test_runtime_service_registry_and_transitions() {
+    using namespace xbridge;
+
+    static_assert(runtime::kServiceCount == 13U,
+                  "the neutral service registry has exactly thirteen families");
+    static_assert(runtime::ServiceStatus::Unavailable == runtime::ServiceStatus::Unsupported,
+                  "Unavailable is the documented alias of Unsupported");
+
+    const std::array<runtime::ServiceId, 13U> ids{{
+        runtime::ServiceId::System,
+        runtime::ServiceId::RuntimeInitialization,
+        runtime::ServiceId::GuestProcess,
+        runtime::ServiceId::Thread,
+        runtime::ServiceId::Synchronization,
+        runtime::ServiceId::VirtualMemory,
+        runtime::ServiceId::File,
+        runtime::ServiceId::Storage,
+        runtime::ServiceId::Input,
+        runtime::ServiceId::Audio,
+        runtime::ServiceId::Graphics,
+        runtime::ServiceId::Timing,
+        runtime::ServiceId::ErrorLogging,
+    }};
+    const std::array<std::string_view, 13U> names{{
+        "System", "RuntimeInitialization", "GuestProcess", "Thread", "Synchronization",
+        "VirtualMemory", "File", "Storage", "Input", "Audio", "Graphics", "Timing",
+        "ErrorLogging",
+    }};
+
+    bool all_ids_document_named = true;
+    for (std::size_t index = 0U; index < ids.size(); ++index) {
+        const auto descriptor = runtime::describe_service(ids[index]);
+        all_ids_document_named =
+            all_ids_document_named && runtime::is_valid_service(ids[index]) &&
+            descriptor.id == ids[index] && descriptor.name == names[index] &&
+            runtime::service_id_name(ids[index]) == names[index] &&
+            std::string_view(runtime::to_string(ids[index])) == names[index];
+    }
+    const auto invalid_id = static_cast<runtime::ServiceId>(13U);
+    check(all_ids_document_named && !runtime::is_valid_service(invalid_id) &&
+              runtime::service_id_name(invalid_id) == "Unknown" &&
+              std::string_view(runtime::to_string(invalid_id)) == "Unknown",
+          "all thirteen neutral service IDs have stable names and invalid IDs stay unknown");
+
+    SyntheticSystemService system_service;
+    SyntheticGraphicsService graphics_service;
+    runtime::SystemServiceRegistry registry;
+    check(registry.count() == 0U && !registry.is_available(runtime::ServiceId::System) &&
+              registry.status(runtime::ServiceId::System) == runtime::ServiceStatus::Unsupported &&
+              registry.query(runtime::ServiceId::System).status ==
+                  runtime::ServiceStatus::Unsupported,
+          "empty registry reports Unsupported rather than a simulated service");
+
+    check(!registry.register_service(runtime::ServiceId::System, nullptr) &&
+              !registry.register_service(invalid_id, &system_service) && registry.count() == 0U,
+          "registry rejects null pointers and unknown service IDs");
+
+    check(registry.register_service(runtime::ServiceId::System, &system_service) &&
+              registry.register_service(runtime::ServiceId::Graphics, &graphics_service) &&
+              registry.count() == 2U,
+          "registry accepts distinct non-owning service pointers");
+    check(!registry.register_service(runtime::ServiceId::System, &system_service) &&
+              registry.count() == 2U,
+          "duplicate registration is rejected without changing the count");
+
+    const runtime::SystemServiceRegistry& const_registry = registry;
+    check(registry.find(runtime::ServiceId::System) == &system_service &&
+              const_registry.find(runtime::ServiceId::Graphics) == &graphics_service &&
+              registry.find_as<runtime::ISystemService>(runtime::ServiceId::System) ==
+                  &system_service &&
+              registry.find_as<runtime::IGraphicsService>(runtime::ServiceId::System) == nullptr &&
+              registry.find(invalid_id) == nullptr,
+          "find and find_as return the supplied pointer only for its registered family");
+
+    check(registry.query(runtime::ServiceId::System).status ==
+                  runtime::ServiceStatus::Available &&
+              registry.query(runtime::ServiceId::System).value == 0U &&
+              registry.is_available(runtime::ServiceId::System) &&
+              registry.query(invalid_id).status == runtime::ServiceStatus::NotRegistered,
+          "query distinguishes available, unsupported and not-registered services");
+
+    check(registry.unregister_service(runtime::ServiceId::System) &&
+              !registry.unregister_service(runtime::ServiceId::System) &&
+              !registry.unregister_service(invalid_id) && registry.count() == 1U &&
+              registry.find(runtime::ServiceId::System) == nullptr,
+          "unregister is idempotent for absent and invalid IDs");
+
+    registry.clear();
+    check(registry.count() == 0U && registry.find(runtime::ServiceId::Graphics) == nullptr,
+          "clear removes all non-owning registrations");
+
+    const auto service_transition =
+        runtime::make_service_transition(runtime::ServiceId::VirtualMemory, 0x1234U);
+    check(service_transition.kind == runtime::TransitionKind::ServiceRequest &&
+              service_transition.service == runtime::ServiceId::VirtualMemory &&
+              service_transition.service_id ==
+                  static_cast<std::uint64_t>(runtime::ServiceId::VirtualMemory) &&
+              service_transition.payload == 0x1234U,
+          "service transition descriptor carries a neutral ID and payload");
+    const auto invalid_transition = runtime::make_service_transition(invalid_id, 7U);
+    check(invalid_transition.service_id == 0U && invalid_transition.payload == 7U,
+          "invalid service transition uses a zero neutral service ID");
+    const auto fault_transition =
+        runtime::make_exit_transition(runtime::TransitionKind::FaultExit, 9U);
+    check(fault_transition.kind == runtime::TransitionKind::FaultExit &&
+              fault_transition.service == runtime::ServiceId::System &&
+              fault_transition.service_id == 0U && fault_transition.payload == 9U,
+          "exit transition descriptor is independent of any guest execution backend");
+
+    check(std::string_view(runtime::to_string(runtime::TransitionKind::ServiceRequest)) ==
+              "ServiceRequest" &&
+              std::string_view(runtime::to_string(runtime::TransitionKind::NormalExit)) ==
+                  "NormalExit" &&
+              std::string_view(runtime::to_string(runtime::ServiceStatus::Available)) ==
+                  "Available" &&
+              runtime::unsupported_result().status == runtime::ServiceStatus::Unsupported &&
+              runtime::not_registered_result().status == runtime::ServiceStatus::NotRegistered,
+          "neutral transition and status names are stable");
+}
+
+// XB-NEXT-DEVELOPMENT-03-F1 — analyzer linkage, labels and exact JSON contract.
+
+bool analysis_vector_is_sorted_unique(const std::vector<std::string>& values) noexcept {
+    for (std::size_t index = 1U; index < values.size(); ++index) {
+        if (values[index - 1U] >= values[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool analysis_new_field_labels_are_known(const std::vector<std::string>& values) noexcept {
+    constexpr std::string_view marker = "label=";
+    for (const std::string& value : values) {
+        const std::size_t at = value.rfind(marker.data(), value.size(), marker.size());
+        if (at == std::string::npos) {
+            return false;
+        }
+        const std::string_view label(value.data() + at + marker.size(),
+                                     value.size() - at - marker.size());
+        if (label != "Confirmed" && label != "Indicator" && label != "Unknown") {
+            return false;
+        }
+    }
+    return true;
+}
+
+void test_analysis_runtime_linkage_and_exact_json() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("runtime_linkage");
+    check(fixture.ok, "analyzer linkage fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    auto bytes = analysis_make_pe32plus_x64(0x5F5E0FF0U);
+    const std::size_t optional = static_cast<std::size_t>(analysis_pe_offset) + 24U;
+    analysis_put_u32(bytes, optional + 112U + 8U, 0x1400U);
+    analysis_put_u32(bytes, optional + 112U + 12U, 0x78U);
+
+    const std::array<std::string_view, 5U> names{{
+        "xmem", "xg_xs", "d3d12_xs", "xgameruntime", "UnknownDep.dll"}};
+    const std::array<std::uint32_t, 5U> name_rvas{{
+        0x1500U, 0x1520U, 0x1540U, 0x1560U, 0x1580U}};
+    for (std::size_t index = 0U; index < names.size(); ++index) {
+        const std::size_t descriptor = analysis_rva_offset(0x1400U + 20U * index);
+        analysis_put_u32(bytes, descriptor + 12U, name_rvas[index]);
+        const std::size_t name_offset = analysis_rva_offset(name_rvas[index]);
+        analysis_put_ascii(bytes, name_offset, names[index]);
+        bytes[name_offset + names[index].size()] = std::uint8_t{0U};
+    }
+    analysis_put_u32(bytes, analysis_rva_offset(0x1400U + 5U * 20U) + 12U, 0U);
+
+    check(analysis_write_file(fixture.root / "linkage.bin", bytes),
+          "analyzer linkage fixture writes a synthetic import-dependency PE image");
+
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw([&] { report = analysis::analyze_directory(fixture.root, error); },
+                         "analyzer linkage scan does not throw");
+    const analysis::AnalysisEntry* entry = analysis_find_entry(report, "linkage.bin");
+    check(!error && entry != nullptr, "analyzer linkage scan succeeds with one entry");
+    if (entry == nullptr) {
+        analysis_cleanup_fixture(fixture);
+        return;
+    }
+
+    const std::array<std::string, 6U> expected_candidates{{
+        "dependency=UnknownDep.dll; service=unknown; label=Unknown",
+        "dependency=d3d12_xs; service=Graphics; label=Indicator",
+        "dependency=xg_xs; service=RuntimeInitialization; label=Indicator",
+        "dependency=xgameruntime; service=RuntimeInitialization; label=Indicator",
+        "dependency=xmem; service=System; label=Indicator",
+        "dependency=xmem; service=VirtualMemory; label=Indicator",
+    }};
+    check(entry->runtime_service_candidates == std::vector<std::string>(
+              expected_candidates.begin(), expected_candidates.end()),
+          "reviewed dependency names map only to neutral service indicators; others stay Unknown");
+    check(analysis_vector_is_sorted_unique(entry->runtime_service_candidates) &&
+              analysis_vector_is_sorted_unique(entry->loader_requirements) &&
+              analysis_vector_is_sorted_unique(entry->unsupported_or_unknown_structures) &&
+              analysis_new_field_labels_are_known(entry->runtime_service_candidates) &&
+              analysis_new_field_labels_are_known(entry->loader_requirements) &&
+              analysis_new_field_labels_are_known(entry->unsupported_or_unknown_structures),
+          "new analyzer fields are sorted, deduplicated and use only evidence labels");
+
+    const std::string size_requirement =
+        "file_size=" + std::to_string(entry->size_bytes) + "; label=Confirmed";
+    check(analysis_vector_has_exact(entry->loader_requirements, size_requirement) &&
+              analysis_vector_has_exact(entry->loader_requirements,
+                                        "section_count=1; label=Confirmed") &&
+              analysis_vector_has_exact(entry->loader_requirements,
+                                        "relocation_type=10 (DIR64); label=Confirmed") &&
+              analysis_vector_has_exact(entry->loader_requirements,
+                                        "relocation_type=3 (HIGHLOW); label=Confirmed") &&
+              analysis_vector_has_exact(entry->loader_requirements,
+                                        "import=xmem; label=Confirmed"),
+          "loader requirements report confirmed size, sections, relocations and imports");
+
+    const std::array<std::string_view, 3U> unknown_structures{{
+        "image_base=unknown; label=Unknown",
+        "relocation_offsets=unknown; label=Unknown",
+        "section_characteristics=unknown; label=Unknown",
+    }};
+    bool all_unknown_structures = true;
+    for (const std::string_view expected : unknown_structures) {
+        all_unknown_structures = all_unknown_structures &&
+            analysis_vector_has_exact(entry->unsupported_or_unknown_structures, expected);
+    }
+    check(all_unknown_structures,
+          "unavailable section and relocation details are reported as Unknown, not invented");
+
+    const std::string linkage_json = report.to_json();
+    check(!analysis_text_contains(linkage_json, "%") &&
+              !analysis_text_contains(linkage_json, "readiness") &&
+              !analysis_text_contains(linkage_json, "ready"),
+          "analyzer linkage output contains no readiness percentage or claim");
+    check(linkage_json == report.to_json(),
+          "analyzer linkage JSON is byte-identical on repeated calls");
+
+    analysis_cleanup_fixture(fixture);
+
+    analysis::AnalysisReport exact_report;
+    exact_report.source_directory = "source";
+    exact_report.notes.push_back("note");
+    analysis::AnalysisEntry exact_entry;
+    exact_entry.relative_path = "entry.bin";
+    exact_entry.size_bytes = 7U;
+    exact_entry.file_type = "data";
+    exact_entry.architecture = "no_platform_claim";
+    exact_entry.timestamp = "not_applicable";
+    exact_entry.runtime_service_candidates.push_back(
+        "dependency=xmem; service=System; label=Indicator");
+    exact_entry.loader_requirements.push_back("file_size=7; label=Confirmed");
+    exact_entry.unsupported_or_unknown_structures.push_back(
+        "image_base=unknown; label=Unknown");
+    exact_entry.status = analysis::DetectionStatus::Indicator;
+    exact_report.entries.push_back(exact_entry);
+
+    const std::string expected_json =
+        "{\n"
+        "  \"source_directory\": \"source\",\n"
+        "  \"entries\": [\n"
+        "    {\n"
+        "      \"relative_path\": \"entry.bin\",\n"
+        "      \"size_bytes\": 7,\n"
+        "      \"file_type\": \"data\",\n"
+        "      \"architecture\": \"no_platform_claim\",\n"
+        "      \"platform_indicators\": []\n"
+        ",\n"
+        "      \"pe_fields\": []\n"
+        ",\n"
+        "      \"imports\": []\n"
+        ",\n"
+        "      \"exports\": []\n"
+        ",\n"
+        "      \"relocation_types\": []\n"
+        ",\n"
+        "      \"debug_types\": []\n"
+        ",\n"
+        "      \"dependencies\": []\n"
+        ",\n"
+        "      \"resource_kinds\": []\n"
+        ",\n"
+        "      \"timestamp\": \"not_applicable\",\n"
+        "      \"uncertainties\": []\n"
+        ",\n"
+        "      \"component_mapping\": []\n"
+        ",\n"
+        "      \"runtime_service_candidates\": [\n"
+        "        \"dependency=xmem; service=System; label=Indicator\"\n"
+        "      ]\n"
+        ",\n"
+        "      \"loader_requirements\": [\n"
+        "        \"file_size=7; label=Confirmed\"\n"
+        "      ]\n"
+        ",\n"
+        "      \"unsupported_or_unknown_structures\": [\n"
+        "        \"image_base=unknown; label=Unknown\"\n"
+        "      ]\n"
+        ",\n"
+        "      \"status\": \"indicator\"\n"
+        "    }\n"
+        "  ],\n"
+        "  \"notes\": [\n"
+        "    \"note\"\n"
+        "  ]\n"
+        "}\n";
+    const std::string actual_json = exact_report.to_json();
+    if (actual_json != expected_json) {
+        std::cerr << "[DIAG] exact analyzer JSON mismatch; actual output follows:\n"
+                  << actual_json;
+    }
+    check(actual_json == expected_json,
+          "exact analyzer JSON is unchanged except for the three deterministic fields before status");
+}
+
 }
 
 int main() {
@@ -5237,6 +6522,15 @@ int main() {
     test_analysis_deterministic_entry_order();
     test_analysis_resource_name_odd_max_string_bytes_regression();
     test_analysis_dll_characteristics_exact_output_regression();
+
+    test_native_feature_detection_and_gating();
+    test_native_backend_routines_and_interpreter_parity();
+    test_guest_execution_context_stack_and_memory_failures();
+    test_loader_synthetic_valid_lifecycle_and_permissions();
+    test_loader_validation_failure_boundaries();
+    test_loader_relocation_failure_paths_and_rollback();
+    test_runtime_service_registry_and_transitions();
+    test_analysis_runtime_linkage_and_exact_json();
 
     host::HostCapabilities capable_host{};
     capable_host.logical_threads = 16;

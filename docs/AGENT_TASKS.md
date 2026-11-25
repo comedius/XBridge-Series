@@ -3639,3 +3639,447 @@ PROGRESS_UNITS: N/A
 `observed` — Tester phase-1 handoff for `XB-NEXT-DEVELOPMENT-02-D` (`ses_deb917532ffecxKp3RQebacybC`): sole writer changed only `tests/test_main.cpp`, adding the `guest_virtual_memory.hpp` include, `<string>`, anonymous-namespace helpers/fixtures, 11 test functions and their `main()` calls; no existing test, assertion or call was removed or weakened. Test functions: `test_x64_step_at_rip_via_execute_only_above_4gib` (T1), `test_x64_execute_instruction_via_data_above_4gib_little_endian` (T2), `test_x64_via_execute_permission_denied_at_mapping_and_region` (T3), `test_x64_via_data_permission_denied_no_partial_write` (T4), `test_x64_via_invalid_addresses_no_truncation` (T5), `test_x64_step_at_rip_via_bounded_fetch_retry` (T6), `test_x64_via_memory_fault_propagation` (T7), `test_x64_virtual_memory_short_completion_failure` (T7 short completion), `test_x64_execute_instruction_via_legacy_parity`, `test_x64_step_instruction_via_legacy_parity`, and `test_x64_step_at_rip_via_legacy_parity` (T8). Helpers include `RecordingAddressSpaceView` and `ConfigurableVirtualMemory`; all fixtures use Normal regions or an unbound dispatcher. Exact command: `git diff --check; "EXIT=$LASTEXITCODE"` → `EXIT=0`, no diagnostics. `git status --short` → `Permission denied: shell`; not bypassed. Branch, compilation and runtime results remain `unknown`; no configure, build or CTest was run in phase 1.
 
 `observed` — Coordinator read-only composition check: grep for the 11 new test function identifiers in `tests/test_main.cpp` returned 22 matches, consisting of exactly 11 definitions and 11 calls in `main()`; no added test is orphaned.
+
+## XB-NEXT-DEVELOPMENT-03 package envelopes
+
+`documented` — Owner command `XB-NEXT-DEVELOPMENT-03` approves the implementation and publication envelope below from baseline `main` HEAD `4ee82d99e79a37498b5359dd6b31a43af3c357fb`. A later owner message in the same package explicitly approves the hybrid architecture direction: compatible Xbox x64 code should ultimately execute natively on host CPUs, Xbox-specific OS/services/runtime behavior is supplied by an XBridge compatibility layer, and the existing interpreter remains reference, diagnostic and fallback. This supersedes the earlier statement that no final execution model could be selected. It does not prove arbitrary Xbox binaries executable, authorize JIT/binary rewriting/code patching, or permit execution of real game code. `WORKTREE` for every package is the current clean main checkout `D:\XBridge 1.0\XBridge-Series-Autonomy`; no separate worktree is opened, because the documented OpenCode worktree-open failure remains unresolved and no destructive Git operation is permitted.
+
+### XB-NEXT-DEVELOPMENT-03-R0
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-R0
+PACKAGE_TYPE: RESEARCH
+PRODUCT_BOUNDARY: development-only
+GOAL: Produce evidence-labeled public research for the owner-approved hybrid execution direction, native-execution feasibility and isolation limits, PE/COFF relocations, runtime library families, D3D12.X questions and the performance measurement concept.
+FILES: `docs/research/XB-NEXT-03_EXECUTION_MODELS.md`, `docs/research/XB-NEXT-03_NATIVE_EXECUTION_FEASIBILITY.md`, `docs/research/XB-NEXT-03_PECOFF_RELOCATIONS.md`, `docs/research/XB-NEXT-03_LIBRARY_FAMILIES.md`, `docs/research/XB-NEXT-03_GRAPHICS_ANALYSIS.md`, `docs/research/XB-NEXT-03_PERFORMANCE_CONCEPT.md`, `docs/RESEARCH_REGISTER.md`
+ALLOWED: Additive research documents and register entries with exact 23-field blocks, public lawful sources, access dates, evidence labels and explicit unknowns.
+FORBIDDEN: Product code, tests, build files, ADR edits, new owner decisions, proprietary material, unsupported Xbox claims, other-console-as-Xbox evidence, DRM material or real game files.
+ACCEPTANCE: Three execution models compared on all required axes with the owner-approved hybrid direction recorded but arbitrary-game feasibility left `unknown`; native feature/ABI/TLS/exception/isolation limits documented, including separate evidence-labeled treatment of Windows Job Objects, restricted tokens and AppContainer with explicit "not a complete security boundary" wording unless a reviewed source establishes otherwise; DIR64 and ABSOLUTE relocation behavior distinguished from unsupported types; library families documented with confirmed/unknown fields and sources; D3D12.X equivalence not asserted; measurement concept uses synthetic cases and sets no real-game target.
+TESTS: Independent reviewer conformance check of register fields and source mapping; no build/CTest for pure research.
+REVIEW: reviewer required; architect not required for evidence collection.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: owner command XB-NEXT-DEVELOPMENT-03 and the later hybrid-direction approval; no ADR acceptance or arbitrary-game claim authorized.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-R0
+PARENT_ID: XB-NEXT-DEVELOPMENT-03
+DEPENDENCIES: N/A
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: conformant
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-R0-C1
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-R0-C1
+PACKAGE_TYPE: RESEARCH
+PRODUCT_BOUNDARY: development-only
+GOAL: Apply one bundled, same-writer correction for the two actionable R0 reviewer findings and the one non-blocking source-map inconsistency before mandatory re-review.
+FILES: `docs/research/XB-NEXT-03_NATIVE_EXECUTION_FEASIBILITY.md`, `docs/research/XB-NEXT-03_PERFORMANCE_CONCEPT.md`, `docs/RESEARCH_REGISTER.md`
+ALLOWED: Add the exact evidence-labeled "not a complete security boundary" statement for Job Objects, restricted tokens, AppContainer and their combination; update register entry `XB-NEXT-03-NATIVE` finding/source mapping and uncertainties to match. Relabel `XB-NEXT-03-SYNTH` F2 as `documented (project-authored)` or add exact primary URLs and access dates to that entry. Define source S9 in the performance document inventory or remove its undefined reproduction reference and align the register source list.
+FORBIDDEN: New product code, tests, build changes, ADR edits, new owner decisions, proprietary material, unsupported Xbox claims, changes to other research documents or entries, and any claim that reviewer PASS already exists.
+ACCEPTANCE: The exact phrase "not a complete security boundary" is present for all three mechanisms and the combination in `XB-NEXT-03_NATIVE_EXECUTION_FEASIBILITY.md` and mapped in register `XB-NEXT-03-NATIVE`; no `authoritative`-labeled finding in `XB-NEXT-03-SYNTH` relies solely on local project-authored documents; every `S<n>` cited in the performance reproduction paragraph is defined in its Section 1 inventory and matches the register source list; all 23-field blocks and the Section 7/9 counts remain consistent.
+TESTS: Independent reviewer re-check with file:line evidence; no build or CTest for this documentation-only correction.
+REVIEW: Mandatory independent reviewer re-check after correction.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: no new owner decision; reviewer findings are in-scope evidence corrections.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-R0-C1
+PARENT_ID: XB-NEXT-DEVELOPMENT-03-R0
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-R0
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: conformant
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-A0
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-A0
+PACKAGE_TYPE: RESEARCH
+PRODUCT_BOUNDARY: development-only
+GOAL: Record the owner-approved hybrid execution/runtime boundary and an implementation-ready design draft based on R0 and the read-only architect analysis.
+FILES: `docs/architecture/XB_NEXT_03_EXECUTION_STRATEGY_DRAFT.md`
+ALLOWED: Additive draft with decision matrix, owner-approved direction, scoped native proof boundaries, open technical risks and explicit preservation of the interpreter as reference/diagnostic/fallback.
+FORBIDDEN: Editing `docs/DECISIONS.md`, claiming an accepted ADR, enabling JIT/binary rewriting/code patching, changing product interfaces or code, or claiming real-game compatibility.
+ACCEPTANCE: Draft records the owner-approved hybrid direction without re-deciding it; states that only fixed trusted synthetic routines may run natively in this phase and that optional ISA features are feature-gated metadata in N1 rather than proven AVX2/BMI/FMA execution; covers isolation, unsupported instructions, Xbox service interception, memory control, exceptions, guest/host transition ownership, expanded runtime coverage, F1 evidence labels and implementation cost; states that ADR-0012 remains open and that no accepted ADR is created; lists remaining technical blockers.
+TESTS: Reviewer verification of evidence labels and consistency with the owner-approved direction; no build/CTest.
+REVIEW: architect read-only input first; reviewer required.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: hybrid direction already approved by the owner; no further architecture decision requested here.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-A0
+PARENT_ID: XB-NEXT-DEVELOPMENT-03
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-R0, XB-NEXT-DEVELOPMENT-03-R0-C1
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_applicable
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-A0-C1
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-A0-C1
+PACKAGE_TYPE: RESEARCH
+PRODUCT_BOUNDARY: development-only
+GOAL: Apply one bundled coordinator correction for both actionable A0 evidence-label findings before mandatory re-review.
+FILES: `docs/architecture/XB_NEXT_03_EXECUTION_STRATEGY_DRAFT.md`
+ALLOWED: Replace the unsupported expanded performance metric list with the exact metric decomposition recorded in reviewed R0 performance evidence and label it correctly; split the isolation paragraph so documented public limitations are separated from the `hypothesis` engineering conclusion that no mechanism is a complete security boundary.
+FORBIDDEN: Editing `docs/DECISIONS.md`, product code, tests, CMake, research entries, other architecture documents, new owner decisions, ADR acceptance and compatibility/performance claims.
+ACCEPTANCE: Every metric named in A0 Section 6 resolves to a specific row or rule in `docs/research/XB-NEXT-03_PERFORMANCE_CONCEPT.md` or another explicitly cited reviewed source; no `documented` claim cites a source that does not contain it; the security-boundary conclusion is explicitly `hypothesis` and consistent with register `XB-NEXT-03-NATIVE` F8/Uncertainties; all A0 boundaries and open decisions remain unchanged.
+TESTS: Independent reviewer re-check with file:line evidence; no build or CTest for this documentation-only correction.
+REVIEW: Mandatory independent reviewer re-check after correction.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: no new owner decision; reviewer findings are in-scope evidence-label corrections.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-A0-C1
+PARENT_ID: XB-NEXT-DEVELOPMENT-03-A0
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-A0
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_applicable
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-B1
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-B1
+PACKAGE_TYPE: FEATURE
+PRODUCT_BOUNDARY: product
+GOAL: Add a standalone, bounded PE/COFF loader that validates metadata and maps synthetic PE test images into `GuestAddressSpace` without executing them.
+FILES: `include/xbridge/loader/pe_image.hpp` (new), `include/xbridge/loader/executable_loader.hpp` (new), `src/loader/pe_image.cpp` (new), `src/loader/executable_loader.cpp` (new), `CMakeLists.txt`
+ALLOWED: Additive loader API and a loader-private bounded PE parser that exposes section characteristics, relocation page RVAs and 12-bit offsets; PE32+/AMD64 validation; header, section, alignment, overlap, range and overflow checks; bounded loader limits; controlled mapping with reverse-order virtual unmap rollback; two-phase DIR64/ABSOLUTE relocation handling (validate all entries before writing any); explicit unsupported relocation errors; explicit loader states and transition table; entry-point recording only. No change to `src/analysis/**` or public analyzer interfaces.
+FORBIDDEN: Execution or run loop, JIT, device dispatch, arbitrary guest bytes, new physical-region removal API, changes to `GuestMemory`/`TestCpu`/`ExecutionPolicy`, changes to existing interpreter signatures/statuses, new dependencies, proprietary inputs or Xbox compatibility claims.
+ACCEPTANCE: All malformed/truncated/overflow inputs fail without exceptions or undefined behavior; section permissions are derived from section characteristics and enforced at the virtual mapping while physical backing uses a documented loader-only superset; invalid overlaps and unmappable entry points fail; unsupported relocation types fail before any relocation write; failed load leaves no guest-visible virtual mapping and does not reach `Ready`; failed physical backing is recorded as inaccessible; `Failed` permits only `unload()`/reset; state transitions are deterministic.
+TESTS: Tester package XB-NEXT-DEVELOPMENT-03-T1 with synthetic PE fixtures; no real game file.
+REVIEW: architect input before implementation; independent reviewer after tests.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: owner command XB-NEXT-DEVELOPMENT-03; no native-execution approval.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-B1
+PARENT_ID: XB-NEXT-DEVELOPMENT-03
+DEPENDENCIES: N/A
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-P1
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-P1
+PACKAGE_TYPE: BUGFIX
+PRODUCT_BOUNDARY: product
+GOAL: Apply one bundled correction for all three actionable product/test reviewer findings: rollback after partial-map overflow, shared AVX2 dependency enforcement, and canonical C1 service tokens in F1 output.
+FILES: `src/loader/executable_loader.cpp`, `include/xbridge/execution/cpu_feature_detector.hpp`, `src/execution/native_execution_backend.cpp`, `src/analysis/game_intelligence.cpp` (sole writer: developer)
+ALLOWED: (1) In `ExecutableLoader::map()`, every failure after a successful section mapping must perform the existing reverse-order virtual rollback and mark created physical backing inaccessible before entering `Failed`; no public interface change. (2) Enforce AVX2 dependency at the shared feature boundary: `CpuFeatureSet::has(Avx2)` requires `osxsave && xgetbv`, `FixedCpuFeatureDetector` normalizes injected AVX2 without OSXSAVE/XGETBV, and `NativeExecutionBackend::can_execute(Avx2Gate)` uses the shared accessor. (3) F1 `Indicator` candidates emit exact `runtime::service_id_name()` strings for System, VirtualMemory, RuntimeInitialization and Graphics, using the canonical runtime header rather than ad hoc lowercase display strings; unknown dependencies remain `Unknown`.
+FORBIDDEN: Editing `tests/**`, CMake, docs, config, presets, ADRs or research; JIT, patching, arbitrary guest bytes, new dependencies, Xbox API simulation, compatibility claims, weakening rollback/state rules or changing unrelated JSON fields.
+ACCEPTANCE: A synthetic PE with at least two successfully mapped sections followed by a physical-address overflow leaves no guest-visible virtual mapping, marks every created physical region inaccessible, and returns an explicit error with `LoaderState::Failed`. An injected feature set with `avx2=true` but either `osxsave=false` or `xgetbv=false` reports AVX2 unavailable through both raw fixed-detector output and `has()`, and `can_execute(Avx2Gate)` is false while all-features and host-detector behavior remains unchanged. Every non-`Unknown` F1 candidate uses an exact C1 `ServiceId` token from `service_id_name()`; unknown dependencies stay explicit; prior JSON fields/order and determinism are preserved.
+TESTS: Dependent tester package `XB-NEXT-DEVELOPMENT-03-T1-C2` adds boundary assertions and reruns all five declared verification commands.
+REVIEW: Coordinator skipped architect: all three fixes are local correctness repairs with no new public signature, module boundary or ADR change. Mandatory independent reviewer re-check after T1-C2.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: owner command XB-NEXT-DEVELOPMENT-03; no new owner decision.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-P1
+PARENT_ID: XB-NEXT-DEVELOPMENT-03
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-N1, XB-NEXT-DEVELOPMENT-03-B1, XB-NEXT-DEVELOPMENT-03-F1
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-B1-C1
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-B1-C1
+PACKAGE_TYPE: BUGFIX
+PRODUCT_BOUNDARY: product
+GOAL: Fix the loader unload diagnostic so a successful unload returns `None`/`Unloaded` instead of treating an untouched default `MemoryResult` as an unmap failure.
+FILES: `src/loader/executable_loader.cpp` (sole writer: developer)
+ALLOWED: Inside `ExecutableLoader::unload()` only, replace the failed-default `MemoryResult` sentinel with explicit success/failure tracking; record and return the first genuine `unmap()` failure while preserving all cleanup and inaccessible-backing behavior. No public interface change.
+FORBIDDEN: Editing `tests/**`, CMake, headers, other product modules, docs, config, presets, ADRs, research, adding dependencies or claiming compatibility. Do not weaken rollback, accessibility marking or state-transition rules.
+ACCEPTANCE: When every `unmap()` succeeds, `unload()` clears virtual mappings, marks physical backing inaccessible, sets `LoaderState::Unloaded`, returns `LoadError::None`, and does not overwrite `first_memory_result_` with an untouched default failure. When any `unmap()` fails, cleanup still completes, the first genuine failure is recorded in `first_memory_result_`, and `LoadError::MemoryFailure`/`LoaderState::Failed` is returned. No other behavior changes.
+TESTS: Tester package `XB-NEXT-DEVELOPMENT-03-T1-C1` updates the two characterization assertions, then reruns the five declared verification commands.
+REVIEW: Coordinator skipped architect because this is a one-file local fix with no interface or module-boundary change; independent reviewer after T1-C1.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: owner command XB-NEXT-DEVELOPMENT-03; no new owner decision.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-B1-C1
+PARENT_ID: XB-NEXT-DEVELOPMENT-03-B1
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-B1
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-C1
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-C1
+PACKAGE_TYPE: FEATURE
+PRODUCT_BOUNDARY: product
+GOAL: Add testable, interface-only abstractions and a neutral registry for thirteen future Xbox runtime service families plus a neutral guest/host transition descriptor, without simulating unknown Xbox APIs.
+FILES: `include/xbridge/runtime/system_services.hpp` (new), `src/runtime/system_services.cpp` (new)
+ALLOWED: Additive service interfaces for system, runtime initialization, guest process, thread, synchronization, virtual memory, file, storage, input, audio, graphics, timing/performance counters and error/logging; neutral guest/host transition seam; descriptors/results; non-owning registry with duplicate detection, availability query and defined unsupported/not-registered results.
+FORBIDDEN: Implementing real Xbox services, inventing undocumented APIs, host API calls, firmware/keys/assets, DRM work, service behavior claims or changes to unrelated modules.
+ACCEPTANCE: Thirteen stable `ServiceId` tokens are defined exactly as System, RuntimeInitialization, GuestProcess, Thread, Synchronization, VirtualMemory, File, Storage, Input, Audio, Graphics, Timing, ErrorLogging; interfaces are pure abstract and host-independent; the neutral transition descriptor lives only in `xbridge::runtime`, while the concrete `xbridge::execution::GuestHostTransition` remains in N1 with no cross-dependency; null registrations and duplicate `ServiceId` values fail explicitly; registry behavior is deterministic; unimplemented services return explicit unsupported/not-registered results; unknown/unregistered services are distinguished; no unknown Xbox function is simulated.
+TESTS: Tester package XB-NEXT-DEVELOPMENT-03-T1.
+REVIEW: independent reviewer after tests; architect only if interface boundary issues appear.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: owner command XB-NEXT-DEVELOPMENT-03.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-C1
+PARENT_ID: XB-NEXT-DEVELOPMENT-03
+DEPENDENCIES: N/A
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-F1
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-F1
+PACKAGE_TYPE: FEATURE
+PRODUCT_BOUNDARY: product
+GOAL: Connect existing read-only Game Intelligence output to the neutral runtime service identifiers and loader-relevant requirements while keeping verified facts, indicators and unknowns separate.
+FILES: `include/xbridge/analysis/game_intelligence.hpp`, `src/analysis/game_intelligence.cpp`
+ALLOWED: Additive `runtime_service_candidates`, `loader_requirements` and `unsupported_or_unknown_structures` fields with deterministic JSON output; report observed section/memory metadata, import/export/relocation requirements, known runtime/graphics dependency indicators and requirements XBridge cannot currently satisfy; map only explicitly reviewed dependency names to neutral service IDs.
+FORBIDDEN: Real game paths, uploads, extraction, firmware/keys/assets, invented Xbox APIs, compatibility/readiness percentages or claims, deletion of existing fields and weakening exact-output regression behavior without reviewer approval.
+ACCEPTANCE: `AnalysisEntry` gains stable string fields only; the public JSON contract is extended deterministically and existing exact-output tests are extended, not removed or weakened; every candidate includes the observed dependency, a neutral service token and an explicit `Confirmed`/`Indicator`/`Unknown` label, with enum integer values never serialized into JSON. Only the owner-listed family names `xmem`, `xg_xs`, `d3d12_xs` and `xgameruntime` are reviewed mappings to neutral service tokens, and those mappings remain indicators, never capability claims. Section characteristics and relocation page offsets not available in `PeFacts` are reported as `unknown` rather than invented; unknown dependencies and structures remain explicitly unknown; no execution-readiness percentage is produced; output is sorted/deduplicated and deterministic; all prior analyzer behavior and exact-output regressions are preserved.
+TESTS: Tester package XB-NEXT-DEVELOPMENT-03-T1.
+REVIEW: independent reviewer after tests.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: owner command XB-NEXT-DEVELOPMENT-03.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-F1
+PARENT_ID: XB-NEXT-DEVELOPMENT-03
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-C1
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-T1
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-T1
+PACKAGE_TYPE: FEATURE
+PRODUCT_BOUNDARY: product
+GOAL: Add independent synthetic tests for native feature-gated execution, loader validation/mapping/relocations, runtime registry, analyzer linkage and interpreter regression, then run the declared verification.
+FILES: `tests/test_main.cpp` (sole writer: tester)
+ALLOWED: Additive test helpers, synthetic PE builders and test doubles; tests for injectable CPU feature detection and pre-execution fallback, native/interpreter parity, register/stack/memory boundary failures, transition descriptors, valid/invalid PE headers, truncated data, overflow, section addresses/overlaps/permissions, rollback after a mid-map failure, two-phase relocation validation with an unsupported type after a valid DIR64, state/terminal-failure behavior, registry null/duplicate/unknown cases, analyzer candidate fields and existing interpreter regression.
+FORBIDDEN: Product code, CMake/build edits, real game files, dependence on the developer machine's real CPUID result for correctness, weakening/removing/skipping existing tests or exact-output assertions, unverified pass claims.
+ACCEPTANCE: Every required category has at least one executed assertion; all new native tests use injected feature sets; existing exact-output assertions are preserved but their expected JSON strings are deterministically extended with the three new fields, so no assertion is removed or weakened; targeted checks run before full verification; VS2026 Debug configure/build/CTest and `git diff --check` succeed with exact recorded output.
+TESTS: Absolute VS2026 `cmake.exe --version`, `--fresh --preset windows-debug`, `--build --preset windows-debug --config Debug`, absolute `ctest.exe --test-dir build/windows-debug -C Debug --output-on-failure`, plus `git diff --check`.
+REVIEW: independent reviewer after implementation.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: owner command XB-NEXT-DEVELOPMENT-03.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-T1
+PARENT_ID: XB-NEXT-DEVELOPMENT-03
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-N1, XB-NEXT-DEVELOPMENT-03-B1, XB-NEXT-DEVELOPMENT-03-C1, XB-NEXT-DEVELOPMENT-03-F1
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-T1-C2
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-T1-C2
+PACKAGE_TYPE: BUGFIX
+PRODUCT_BOUNDARY: product
+GOAL: Add tests for the three reviewer findings after product package `XB-NEXT-DEVELOPMENT-03-P1`, update F1 exact-output expectations to canonical service tokens, and rerun full verification.
+FILES: `tests/test_main.cpp` (sole writer: tester)
+ALLOWED: Add a synthetic multi-section PE fixture where a later section overflows `max_physical_address` after two successful mappings and assert explicit failure, `Failed` state, no virtual mappings, every created physical region inaccessible and a failed read through the first virtual base. Add an injected feature boundary test for `{avx2=true, osxsave=false or xgetbv=false}` proving `detect().avx2`, `has(Avx2)` and `can_execute(Avx2Gate)` are false. Update F1 candidate and exact JSON expectations from ad hoc lowercase service strings to exact C1 `service_id_name()` tokens while preserving all prior fields, ordering and assertions.
+FORBIDDEN: Product code, CMake, docs, config, presets, ADRs, weakening/removing/skipping tests, changing unrelated expected JSON or claiming a pass before execution.
+ACCEPTANCE: All three boundary cases are asserted and executed; existing tests and `main()` calls remain intact; exact JSON is updated only for the canonical service-token strings; all five declared verification commands succeed with exact recorded output.
+TESTS: Absolute VS2026 `cmake.exe --version`, `--fresh --preset windows-debug`, `--build --preset windows-debug --config Debug`, absolute `ctest.exe --test-dir build/windows-debug -C Debug --output-on-failure`, plus `git diff --check`.
+REVIEW: Mandatory independent reviewer re-check after implementation.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: owner command XB-NEXT-DEVELOPMENT-03; no new owner decision.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-T1-C2
+PARENT_ID: XB-NEXT-DEVELOPMENT-03-T1
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-P1
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-T1-C1
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-T1-C1
+PACKAGE_TYPE: BUGFIX
+PRODUCT_BOUNDARY: product
+GOAL: Replace the two temporary unload characterization assertions with the corrected successful-unload contract after `XB-NEXT-DEVELOPMENT-03-B1-C1`, then rerun full verification.
+FILES: `tests/test_main.cpp` (sole writer: tester)
+ALLOWED: In `test_loader_synthetic_valid_lifecycle_and_permissions`, assert that `unload()` returns `LoadError::None`, leaves `LoaderState::Unloaded`, clears virtual mappings, marks both backing regions inaccessible, and no longer reports the untouched default diagnostic. Preserve all other tests and assertions.
+FORBIDDEN: Product code, CMake, docs, config, presets, ADRs, weakening/removing/skipping any test, restoring an unverified pass claim or changing unrelated expected JSON.
+ACCEPTANCE: The two characterization assertions are replaced by objective corrected-contract assertions; all existing tests remain and are called from `main()`; the five declared verification commands all succeed with exact recorded output after the product correction.
+TESTS: Absolute VS2026 `cmake.exe --version`, `--fresh --preset windows-debug`, `--build --preset windows-debug --config Debug`, absolute `ctest.exe --test-dir build/windows-debug -C Debug --output-on-failure`, plus `git diff --check`.
+REVIEW: Mandatory independent reviewer after implementation.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: owner command XB-NEXT-DEVELOPMENT-03; no new owner decision.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-T1-C1
+PARENT_ID: XB-NEXT-DEVELOPMENT-03-T1
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-B1-C1
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-N1
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-N1
+PACKAGE_TYPE: FEATURE
+PRODUCT_BOUNDARY: product
+GOAL: Establish a minimal native x64 execution proof with explicit host feature detection, controlled guest/host transitions and interpreter comparison using only trusted synthetic routines.
+FILES: `include/xbridge/execution/cpu_feature_detector.hpp` (new), `include/xbridge/execution/native_execution_backend.hpp` (new), `include/xbridge/execution/guest_execution_context.hpp` (new), `src/execution/cpu_feature_detector.cpp` (new), `src/execution/native_execution_backend.cpp` (new), `CMakeLists.txt`
+ALLOWED: Additive `CpuFeatureSet`/`CpuFeature`/`ICpuFeatureDetector`/`FixedCpuFeatureDetector` in `cpu_feature_detector.hpp`; `NativeRoutineId`/`NativeExecutionError`/`NativeExecutionResult`/`NativeExecutionBackend`/`ExecutionBackendSelector` in `native_execution_backend.hpp`; `GuestRegisterState`/`GuestStack`/`GuestExecutionContext`/`GuestHostTransition` in `guest_execution_context.hpp`; Windows x64 MSVC `cpuid`/`xgetbv` implementation with AVX2 conditional on OSXSAVE/XGETBV; injectable fixed detector; fixed trusted compiled-in routine IDs only; explicit unsupported errors and pre-execution interpreter fallback.
+FORBIDDEN: JIT, binary rewriting, code patching, arbitrary function pointers or guest byte buffers in the public API, executing arbitrary guest bytes or real game files, calling Xbox APIs, host process isolation claims, new dependencies, changes to `ExecutionPolicy`/`CpuBackend` and removal/weakening of the interpreter.
+ACCEPTANCE: Feature detection is deterministic and injectable; every feature is reported independently and AVX2 is not reported available without OSXSAVE/XGETBV support; backend accepts only a `NativeRoutineId` plus a prepared `GuestExecutionContext`; unsupported required features produce explicit `UnsupportedFeature` errors before any routine runs; error set includes `UnknownRoutine`, `InvalidContext`, `MemoryAccessError` and `TransitionError`; fallback is decided before execution and no mid-routine path switch occurs; guest memory is accessed only through `IGuestVirtualMemory`; compiled routines never receive raw host pointers into guest backing storage; optional AVX2/BMI/FMA instructions are gating metadata only in this proof and the draft must state that limitation; the interpreter remains independently usable.
+TESTS: Tester package XB-NEXT-DEVELOPMENT-03-T1 adds native/interpreter comparison, register and stack handling, memory boundary failures, feature-gated fallback and transition tests using synthetic routines only.
+REVIEW: architect input before implementation; independent reviewer after tests.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: owner explicitly approved hybrid native/runtime direction; JIT and arbitrary guest execution remain forbidden.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-N1
+PARENT_ID: XB-NEXT-DEVELOPMENT-03
+DEPENDENCIES: N/A
+STATUS: pass
+IMPLEMENTATION_STATE: done
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: local_only
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### XB-NEXT-DEVELOPMENT-03-PUB
+
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-PUB
+PACKAGE_TYPE: FEATURE
+PRODUCT_BOUNDARY: development-only
+GOAL: Publish only independently reviewed and verified work through a scoped feature branch and PR after all package gates pass.
+FILES: `docs/AGENT_TASKS.md`, `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `opencode.jsonc`, `.opencode/agents/coordinator.md` as needed for scoped publication rights
+ALLOWED: Coordinator-only documentation/status updates, minimal exact publication permission rule, scoped commits, feature ref push, PR, CI gate, regular merge and local sync.
+FORBIDDEN: History rewrite, destructive Git commands, merging on failing/pending CI, publishing unreviewed or untested work, changing product code after review without a new correction round.
+ACCEPTANCE: PR state `MERGED`, all required CI checks pass, final local `main` and `origin/main` match, working tree clean, `git diff --check` exit 0.
+TESTS: Final Git/GitHub status checks after merge; no new product build for docs-only bookkeeping.
+REVIEW: All preceding packages must have reviewer verdict; reviewer not re-launched merely for bookkeeping.
+WORKTREE: current clean main checkout.
+OWNER_APPROVALS: publication authorized by XB-NEXT-DEVELOPMENT-03; the hybrid direction is owner-approved and is recorded, but no new ADR is accepted and no arbitrary-game claim is published by this package.
+
+```yaml
+PACKAGE_ID: XB-NEXT-DEVELOPMENT-03-PUB
+PARENT_ID: XB-NEXT-DEVELOPMENT-03
+DEPENDENCIES: XB-NEXT-DEVELOPMENT-03-R0, XB-NEXT-DEVELOPMENT-03-R0-C1, XB-NEXT-DEVELOPMENT-03-A0, XB-NEXT-DEVELOPMENT-03-A0-C1, XB-NEXT-DEVELOPMENT-03-N1, XB-NEXT-DEVELOPMENT-03-B1, XB-NEXT-DEVELOPMENT-03-C1, XB-NEXT-DEVELOPMENT-03-F1, XB-NEXT-DEVELOPMENT-03-T1, XB-NEXT-DEVELOPMENT-03-B1-C1, XB-NEXT-DEVELOPMENT-03-T1-C1, XB-NEXT-DEVELOPMENT-03-P1, XB-NEXT-DEVELOPMENT-03-T1-C2
+STATUS: in_progress
+IMPLEMENTATION_STATE: in_progress
+REVIEW_STATUS: PASS
+CONFORMANCE_STATUS: not_assessed
+PUBLICATION_STATUS: owner_pending
+BLOCKER_OWNER_DECISION: none
+PROGRESS_UNITS: N/A
+```
+
+### Coordinator implementation plan before delegation
+
+`documented` — The following baseline plan is retained as planning history and is superseded by the architect-consolidated implementation contract recorded after the risk note below. N1 adds an injectable `CpuFeatureDetector`, a `NativeExecutionBackend` that invokes only fixed compiled-in trusted synthetic routines, `GuestExecutionContext`/`GuestStack`/`GuestHostTransition`/`ExecutionBackendSelector`, explicit feature-gated errors and interpreter fallback; it implements no JIT, rewriting, arbitrary guest-byte execution or process isolation claim. B1 adds `xbridge::loader` with `LoaderState { Unloaded, Validated, Mapped, Relocated, Ready, Failed }`, `LoadError`, `PeImageInfo`, `PeSectionInfo`, bounded `LoaderLimits`/`LoadOptions`, and `ExecutableLoader` methods `validate(std::span<const std::uint8_t>, options)`, `map()`, `relocate()`, `prepare()` and `unload()`. `validate()` accepts PE32+/AMD64 images only, copies no more than the declared image limit, and records entry point, image base, section metadata, import/export/dependency and relocation-type facts using the existing bounded analyzer parser. `map()` derives virtual permissions from section characteristics, checks alignment, ranges, overlap and entry point, creates physical backing, maps each virtual section through `GuestAddressSpace`, and rolls back virtual mappings on failure. `relocate()` accepts only `ABSOLUTE` (0) and `DIR64` (10), fails explicitly on every other type and never writes unknown relocations. No execution entry point is called. C1 adds `xbridge::runtime` with nine pure abstract service interfaces and a non-owning `SystemServiceRegistry` using `ServiceId`, `ServiceStatus`, duplicate detection, `find`, `is_available`, `register_service` and `unregister_service`; no Xbox API behavior is simulated. F1 adds `AnalysisEntry::runtime_service_candidates` and deterministic JSON derived only from observed dependency strings; exact reviewed names map to neutral service IDs, all other names stay explicitly unknown. T1 is the sole writer of `tests/test_main.cpp` and covers synthetic PE success and failure cases, permission derivation, DIR64 application, unsupported relocations, state/rollback, registry behavior, analyzer candidate mapping and existing interpreter regression.
+
+`documented` — Risks: `GuestPhysicalMemory` has no region-removal API, so failure handling can only guarantee rollback of guest-visible virtual mappings; physical backing from a failed load must be recorded as inaccessible and excluded from the ready state. Physical regions need temporary write permission for loader population while the virtual mapping carries the exact effective section permissions; this two-layer distinction must be documented and tested. Large virtual sizes must be bounded before any allocation. The analyzer's exact `dll_characteristics` output regression and all existing tests must remain unchanged. Acceptance failures are recorded explicitly; no percentage is invented.
+
+`documented` — Architect-consolidated implementation contract, authoritative for N1/B1/C1/F1/T1 and fully inside the existing write sets. Effective rights were re-verified from `.opencode/agents/developer.md:5-58` and `.opencode/agents/tester.md:5-81`: `developer` is the sole writer of `include/**`, `src/**` and `CMakeLists.txt`; `tester` is the sole writer of `tests/test_main.cpp`. B1 uses a loader-private bounded PE parser inside `src/loader/`; it must not include `src/analysis/pe_coff_reader.hpp` or change analyzer files, because `PeFacts` exposes neither section characteristics nor relocation offsets. B1 records every successful virtual map as an exact `(base, length)` pair, unmaps in reverse order on failure, preserves the first `MemoryResult` error, and marks unreleasable physical backing as inaccessible so `Ready` is never reached after a failure. `Failed` is terminal except for `unload()`. Relocation validation is two-phase: all block bounds, target RVAs, 8-byte extents and relocation types are checked before any DIR64 write; `ABSOLUTE` is a no-op and every other type fails without mutation. C1 defines exactly thirteen `ServiceId` tokens listed in its acceptance criteria, stores only non-owning service pointers, rejects null and duplicate registrations, distinguishes `NotRegistered`, `Unsupported` and `Available`, and defines a neutral transition descriptor without depending on N1. F1 emits only stable strings and evidence labels, uses the four owner-listed library family names as reviewed indicator mappings, reports unavailable section/relocation details as `unknown`, and never serializes enum integer values. N1 keeps header ownership as stated in its acceptance criteria, accepts only `NativeRoutineId` plus a prepared `GuestExecutionContext`, gates optional ISA features before execution, decides fallback before a routine starts, and documents that AVX2/BMI/FMA instructions are not emitted by the synthetic proof routines. T1 preserves all existing tests and exact-output assertions, uses injected feature sets only for native tests, and covers the negative and rollback cases named in its acceptance criteria. No separate restricted worker process is created in N1; isolation mechanisms remain research topics with no security-boundary claim.
+
+`observed` — Architect input session `ses_deb2e039effeBjOhGvf4qXGzBk` returned no file changes, no build/CTest and no web access; its isolation claims were therefore `hypothesis`/`unknown`. Disposition: every actionable envelope clarification was applied by the coordinator in this ledger (loader-private parser, two-phase relocation, virtual-only rollback, thirteen C1 services, stable F1 string tokens, N1 header/error/fallback ownership, deterministic injected tests, expanded A0/PUB consistency). No new owner decision was needed: the service count follows the owner's enumerated categories, the four reviewed dependency-family names come from the owner's package text, a loader-private parser avoids a public-interface change, and a restricted worker process is out of N1 scope. Remaining genuinely open items are recorded in the A0 draft when R0 completes: ADR acceptance including ADR-0012, future isolation for arbitrary guest-native code, user-facing backend policy and physical-region removal/permission mutation. Those do not block N1/B1/C1/F1/T1.
+
+`observed` — Coordinator re-verified effective write rights before releasing implementation: `.opencode/agents/developer.md:5-58` grants `edit` on `src/**`, `include/**`, `tests/**` and `CMakeLists.txt` and denies docs/config paths; `.opencode/agents/tester.md:5-81` grants only `tests/**` plus the listed CMake/CTest/git commands. The approved package assigns `developer` as sole writer of all product paths and `CMakeLists.txt`, and `tester` as sole writer of `tests/test_main.cpp`; no write path overlaps the researcher's `docs/research/**` and `docs/RESEARCH_REGISTER.md`. `developer` session `ses_deb260eb1ffeeRAsxmlFOy0Rak` was launched with the contract above; no build or test was requested from it.
+
+`observed` — Researcher session `ses_deb2e039dffewcTZglKU9AY0se` completed R0 with seven sole-writer files: six `docs/research/XB-NEXT-03_*.md` documents and `docs/RESEARCH_REGISTER.md`. It reported seven new 23-field entries (`XB-NEXT-03-EXEC`, `-NATIVE`, `-RELOC`, `-LIBS`, `-GFX`, `-PERF`, `-SYNTH`), index/count updates to 16 entries, and researcher-recorded `conformant` status. It did not run `git diff --check` because no shell tool was available in its tool set; it made no product, test, build, ADR or publication change. Reviewer session `ses_deb21e53bffefD07qnOBLF2bdM` was launched for independent register conformance verification; researcher `conformant` is not a reviewer PASS.
+
+`observed` — Coordinator wrote `docs/architecture/XB_NEXT_03_EXECUTION_STRATEGY_DRAFT.md` for A0 from the completed R0 evidence and the architect input. It records the owner-approved hybrid direction, the native/interpreter/hybrid matrix, the N1 synthetic-only boundary, thirteen runtime services and transition ownership, the loader/F1 evidence rules, graphics/performance limits and five open decisions. It does not edit `docs/DECISIONS.md`, accept an ADR, enable a backend or claim real-game feasibility. A0 is awaiting the reviewer; R0 review was launched first to avoid reviewing a draft based on an unverified register.
+
+`observed` — R0 reviewer session `ses_deb21e53bffefD07qnOBLF2bdM` returned `NEEDS_CHANGE` with no file edits and no build/CTest/diff check. Classification: RV-R0-01 (`ACTIONABLE`, Medium) missing explicit "not a complete security boundary" wording for Isolation mechanisms; RV-R0-02 (`ACTIONABLE`, Low) `XB-NEXT-03-SYNTH` F2 labeled `authoritative` while sourced only to local project-authored files; RV-R0-03 (`NON_BLOCKING`, Low) undefined S9 in the performance reproduction text. `OWNER_DECISION` 0, `UNKNOWN` 0. Root causes were grouped into evidence/source-mapping consistency for the single researcher writer, and one bundled correction package `XB-NEXT-DEVELOPMENT-03-R0-C1` was created. R0 is `correcting`/`NEEDS_CHANGE`/`non-conformant`; reviewer PASS is not claimed.
+
+`observed` — Researcher completed `XB-NEXT-DEVELOPMENT-03-R0-C1` in the three authorized files. RV-R0-01 was addressed with evidence-labeled `hypothesis` statements that Job Objects, restricted tokens, AppContainer and their combination are each "not a complete security boundary", plus register F8 mapping and uncertainties; the researcher directly re-fetched S9/S10/S11 and confirmed the exact phrase is an engineering conclusion, not a Microsoft quotation. RV-R0-02 was addressed by relabeling `XB-NEXT-03-SYNTH` and F2 to `documented (project-authored)` and aligning the conclusion. RV-R0-03 was addressed by defining S9 in the performance document and updating its reproduction text. Researcher read-back reports 16 index rows, 16 detail blocks, intact 23-field order and unchanged `unknown` capability statuses; no shell tool was available, so `git diff --check` was not run in that agent. The same reviewer session was relaunched for the mandatory re-check and for the separate A0 verdict.
+
+`observed` — Developer session `ses_deb260eb1ffeeRAsxmlFOy0Rak` reported N1/B1/C1/F1 stable. New product files are the three execution headers and two execution sources, two loader public headers, two loader sources plus the private `src/loader/pe_image_internal.hpp`, and the runtime header/source; modified product files are `CMakeLists.txt`, `include/xbridge/analysis/game_intelligence.hpp` and `src/analysis/game_intelligence.cpp`. CMake adds exactly five new `.cpp` files to `xbridge_core`. The developer did not touch tests, docs, config, ADRs, `ExecutionPolicy`, `GuestMemory`, `TestCpu`, interpreter signatures or `src/analysis/pe_coff_reader.*`; it ran `git diff --check` with no output and `git status --porcelain=v1 --untracked-files=all` with the expected mixed writer files. No build or CTest was run by the developer, so compile/runtime correctness remains `unknown` until tester verification.
+
+`observed` — Effective tester rights were re-verified from `.opencode/agents/tester.md:5-81` before assignment. Tester session `ses_deb1bc090ffelysp5Xct6AEdgQ` is the sole writer of `tests/test_main.cpp` and was given the full N1/B1/C1/F1 synthetic test matrix plus the exact absolute VS2026 CMake/CTest commands and `git diff --check`; it was forbidden to edit product code or build files. This write set is disjoint from both the developer and the researcher.
+
+`observed` — Reviewer re-check returned R0-C1 `PASS` with 0 `ACTIONABLE`, 0 `OWNER_DECISION`, 0 `NON_BLOCKING` and 0 `UNKNOWN`; all three prior findings were closed with file:line evidence, the 16-row/16-block register structure remained intact and capability statuses stayed `unknown`. Per the review-fix workflow Case A, no further R0/R0-C1 review was started. R0 and R0-C1 are recorded `pass`/`done`/`PASS`/`conformant`.
+
+`observed` — A0 reviewer verdict was `NEEDS_CHANGE`: RV-A0-01 (`ACTIONABLE`, Medium) attributed an expanded performance metric list to R0 evidence that does not contain it; RV-A0-02 (`ACTIONABLE`, Low) labeled the isolation security-boundary conclusion `documented` while corrected R0 and register F8 label it `hypothesis`. `OWNER_DECISION` 0, `UNKNOWN` 0. Coordinator write rights for `docs/architecture/**` were re-verified from `.opencode/agents/coordinator.md:44-49`. One bundled correction package `XB-NEXT-DEVELOPMENT-03-A0-C1` was created and applied: A0 now cites only the R0 Section 3/5 metric decomposition and labels future metrics `hypothesis`, and explicitly separates documented isolation limitations from the `hypothesis` security-boundary conclusion. Mandatory re-review is pending; A0 PASS is not claimed.
+
+`observed` — A0-C1 reviewer re-check returned `PASS` with 0 `ACTIONABLE`, 0 `OWNER_DECISION`, 0 `NON_BLOCKING` and 0 `UNKNOWN`; RV-A0-01 and RV-A0-02 were closed with file:line evidence and no collateral change was found. Per Case A, no further A0 review was started. A0 and A0-C1 are recorded `pass`/`done`/`PASS`; register conformance does not apply to the architecture draft, so `CONFORMANCE_STATUS: not_applicable` is used. The research/design gates are now complete; product/test verification remains pending with the tester.
+
+`observed` — Tester session `ses_deb1bc090ffelysp5Xct6AEdgQ` completed T1 in `tests/test_main.cpp` only. It added eight synthetic test functions and all required N1/B1/C1/F1 categories, preserved existing tests and extended the exact analyzer JSON expectations from 18 to 21 fields with the three additive keys before `status`. It ran all five declared commands: absolute VS2026 CMake `--version` returned `cmake version 4.3.1-msvc1`; `--fresh --preset windows-debug` completed configure/generate with no error; `--build --preset windows-debug --config Debug` produced `xbridge_core.lib`, `xbridge.exe` and `xbridge_tests.exe` with no error in the final declared run; absolute CTest reported `100% tests passed, 0 tests failed out of 1`; `git diff --check` produced no output. The tool did not print numeric exit states for those successful commands. Earlier intermediate runs correctly failed on two new-test expectations and an exact JSON formatting mistake; both were corrected without weakening any assertion.
+
+`observed` — Tester found one product defect: `ExecutableLoader::unload()` at `src/loader/executable_loader.cpp:348-375` initializes `MemoryResult first_failure{}` as a failed default and treats that untouched value as an unmap failure after all `unmap()` calls succeed. The tester cannot edit product code, so it temporarily characterized current behavior instead. Classification: `ACTIONABLE` product bug, not an `OWNER_DECISION`; no reviewer verdict is implied. One bundled product correction `XB-NEXT-DEVELOPMENT-03-B1-C1` and one dependent sole-writer test correction `XB-NEXT-DEVELOPMENT-03-T1-C1` were created. Architect was skipped for B1-C1 because the root cause is a one-file local diagnostic bug with no interface, ADR or module-boundary change. Developer write rights for `src/**` were re-verified from `.opencode/agents/developer.md:8-34`; tester write rights for `tests/**` were re-verified from `.opencode/agents/tester.md:5-10`; no hard-deny policy covers either exact path (`opencode.jsonc:158-188`).
+
+`observed` — Developer completed `XB-NEXT-DEVELOPMENT-03-B1-C1` in `src/loader/executable_loader.cpp` only. `ExecutableLoader::unload()` now tracks `have_unmap_failure` explicitly and populates `first_failure` only from a genuine failed `MemoryResult`; successful cleanup sets `Unloaded`/`None` and does not overwrite `first_memory_result_`, while a real unmap failure still records the first failure and returns `MemoryFailure`/`Failed`. Coordinator read-back confirmed the exact logic at `src/loader/executable_loader.cpp:344-381`. Developer ran `git diff --check` with no output and did not run build/CTest. Effective tester rights were re-verified again from `.opencode/agents/tester.md:5-10` before the dependent test assignment.
+
+`observed` — Tester completed `XB-NEXT-DEVELOPMENT-03-T1-C1` in `tests/test_main.cpp` only. It captured `first_memory_result()` immediately before `unload()`, replaced the two characterization checks with assertions for `None`/`Unloaded`, empty virtual mappings, two inaccessible backing regions and an unchanged full `MemoryResult` record. Every other test, `main()` call and the exact analyzer JSON assertion was preserved. It reran the affected build and CTest first (`executable_loader.cpp` and `test_main.cpp` recompiled; CTest `100% tests passed, 0 tests failed out of 1`), then ran all five declared commands in order: absolute CMake `--version` returned `cmake version 4.3.1-msvc1`; `--fresh --preset windows-debug` completed configure/generate (`Configuring done (2.6s)`, `Generating done (0.3s)`); `--build --preset windows-debug --config Debug` rebuilt `xbridge_core.lib`, `xbridge.exe` and `xbridge_tests.exe` with no error; absolute CTest reported `100% tests passed, 0 tests failed out of 1` in `0.08 sec`; `git diff --check` produced no output. No nonzero exit code was reported by the tool for the successful commands. Numeric exit states were therefore not displayed. B1-C1, T1 and T1-C1 are `self_checked`/`review_pending`; independent reviewer verdict remains pending.
+
+`observed` — Product/test reviewer session `ses_deb08e865ffe6oRHSYKb32YnHK` returned `NEEDS_CHANGE` with `ACTIONABLE` 3, `OWNER_DECISION` 0, `NON_BLOCKING` 0, `UNKNOWN` 0 (High 1, Medium 2). It confirmed the stated boundary protections and the B1-C1 `unload()` fix, but found: REV-XB03-01 (High) `src/loader/executable_loader.cpp:204-207` returns `Overflow` with plain `fail()` after earlier sections were mapped, leaving stale guest-visible mappings and physical backing not marked inaccessible; REV-XB03-02 (Medium) `src/execution/native_execution_backend.cpp:187-189` gates `Avx2Gate` on the raw `avx2` bit, so an injected set with `avx2=true` and missing `osxsave`/`xgetbv` bypasses the host detector invariant; REV-XB03-03 (Medium) `src/analysis/game_intelligence.cpp:115-125` emits ad hoc lowercase service strings including non-token `runtime` instead of exact C1 `ServiceId` names. Reviewer had no shell tool and did not run build/CTest/diff; it checked recorded evidence for consistency. Per the review-fix workflow, all three findings were grouped by writer into one bundled product correction `XB-NEXT-DEVELOPMENT-03-P1` and one dependent sole-writer test correction `XB-NEXT-DEVELOPMENT-03-T1-C2`. Architect was skipped because the fixes are local correctness repairs with no new signature, module boundary or ADR change. N1/B1/F1/T1 are `correcting`/`NEEDS_CHANGE`; no PASS is claimed. `observed` clarification: the high-severity rollback test uses a fixture where two sections are actually created before a later section overflows, so an inaccessible-region count of two is meaningful; an overflow on the second section before its region is created cannot produce two created regions.
+
+`observed` — Developer completed bundled product correction `XB-NEXT-DEVELOPMENT-03-P1` in the four authorized files. Coordinator read-back confirmed rollback before `fail(LoadError::Overflow)` at `src/loader/executable_loader.cpp:199-209`, shared AVX2 dependency enforcement at `include/xbridge/execution/cpu_feature_detector.hpp:29-62` and `src/execution/native_execution_backend.cpp:187-188`, and canonical `runtime::service_id_name()` use beginning at `src/analysis/game_intelligence.cpp:2,110-128`. Developer ran `git diff --check` with no output and did not run build/CTest. Tester write rights for `tests/**` were re-verified again from `.opencode/agents/tester.md:5-10` before the dependent test assignment.
+
+`observed` — Tester completed `XB-NEXT-DEVELOPMENT-03-T1-C2` in `tests/test_main.cpp` only. It added an injectable section-count PE fixture and a three-section physical-limit boundary asserting `LoadError::Overflow`, `LoaderState::Failed`, zero virtual mappings, two inaccessible backing regions and a failed read through the first virtual base; added injected AVX2 boundary cases with `osxsave=false` and `xgetbv=false`; and changed F1 candidate/exact-JSON expectations to canonical tokens `System`, `VirtualMemory`, `RuntimeInitialization` and `Graphics` while preserving unknown mappings, key order and all prior assertions. It reran the affected build/CTest first (four product sources recompiled; CTest passed), then all five declared commands: absolute CMake `--version` returned `cmake version 4.3.1-msvc1`; `--fresh --preset windows-debug` completed with `Configuring done (2.9s)` and `Generating done (0.4s)`; `--build --preset windows-debug --config Debug` produced all three targets; absolute CTest reported `100% tests passed, 0 tests failed out of 1` in `0.06 sec`; `git diff --check` produced no output. No nonzero exit status was printed for the successful commands. P1 and T1-C2 are `self_checked`/`review_pending`; mandatory reviewer re-check is pending.
+
+`observed` — Reviewer re-check session `ses_deb08e865ffe6oRHSYKb32YnHK` returned `PASS` for `XB-NEXT-DEVELOPMENT-03-P1` and `XB-NEXT-DEVELOPMENT-03-T1-C2` with `ACTIONABLE` 0, `OWNER_DECISION` 0, `NON_BLOCKING` 0 and `UNKNOWN` 0; all three prior findings were closed with file:line evidence and no collateral change was found. Reviewer had no shell tool and did not independently run build/CTest/diff. Per review-fix Case A, no further product/test review was started. N1, B1, C1, F1, T1, B1-C1, T1-C1, P1 and T1-C2 are recorded `pass`/`done`/`PASS`; all remain `PUBLICATION_STATUS: local_only` until the separate PUB package completes. `unknown` items remain open for ADR acceptance, future isolation of arbitrary native guest code, user-facing backend policy, physical-region removal/permission mutation and adoption of external GPL material."
+
+`observed` — Publication began under `XB-NEXT-DEVELOPMENT-03-PUB`. One combined shell command using semicolon suffixes was rejected by tool permissions, so no state changed from that attempt; exact allowed commands were then used. `git status --short --branch` returned `## main...origin/main [ahead 1]`; `git branch --show-current` returned `main`; `git rev-parse HEAD` returned `ac65037d07d7a09877da10ddd036a730538e09e3`; `git rev-parse origin/main` returned `4ee82d99e79a37498b5359dd6b31a43af3c357fb`; `git diff --check` produced no output; `git log -5 --oneline` showed the XB-03 commit above the XB-02 baseline; GitHub CLI `auth status` showed account `comedius`; `gh pr list --repo comedius/XBridge-Series --head feature/xb-next-development-03 --state all` produced no output. `git push origin HEAD:refs/heads/feature/xb-next-development-03` created the remote feature branch without a forbidden branch switch. `gh pr create --repo comedius/XBridge-Series --base main --head feature/xb-next-development-03 ...` created PR #22 at `https://github.com/comedius/XBridge-Series/pull/22`. `gh pr view 22 ...` returned `OPEN`, `MERGEABLE`, `reviewDecision` empty and two `Windows Build` `build` checks `IN_PROGRESS`. `gh pr checks 22 --repo comedius/XBridge-Series` returned two `build	pending` lines and exit code 1; therefore no merge was attempted. PUB is `in_progress`/`owner_pending`; merge, final sync and `published` remain `unknown` until CI succeeds.
