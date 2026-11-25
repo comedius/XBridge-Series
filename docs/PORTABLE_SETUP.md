@@ -28,8 +28,9 @@ Voraussetzung: OpenCode ist auf dem Zielrechner installiert und über `PATH` err
 Set-Location '<PROJECT_ROOT>'
 opencode --version
 opencode debug paths
-# 'opencode debug config' und 'opencode debug agents' sind nicht in der Allowlist (opencode.jsonc:41-47)
-# und daher nur in einer interaktiven TUI-Sitzung zu verwenden.
+# 'opencode debug config' und 'opencode debug agents' sind nicht allowlistet
+# (globale Shell-Regeln opencode.jsonc:73-109; Agenten-Frontmatter 'shell "*" deny',
+# z. B. coordinator.md:74-85) und daher nur mit Owner-Rechten außerhalb eines Agenten zu verwenden.
 ```
 
 Erwartung:
@@ -55,8 +56,8 @@ Falls `ask`-Berechtigungen in nicht-interaktiven Läufen automatisch abgelehnt w
 
 - Windows x64 (auf jedem Rechner lokal).
 - Git mit HTTPS-Zugriff auf `origin`, falls Klonen/Fetchen nötig ist (lokal installiert).
-- `documented` (erster Rechner): Visual Studio 2026 **Community** mit installierter Entwicklungsunterstützung für C++ und C#, Generator `Visual Studio 18 2026`, CMake `4.3.1-msvc1` und CTest. `observed`: `CMakePresets.json:7`, `CMakePresets.json.backup:7` und `build/windows-debug/CMakeCache.txt:222,254` belegen Community-Pfad und Generator; die C++-/C#- und CMake-Versionsangaben stammen aus der vom Owner bestätigten Erst-Rechner-Konfiguration und wurden in diesem dokumentarischen Auftrag nicht erneut abgefragt (`unknown` für eine erneute lokale Prüfung).
-- `observed` (lokaler Arbeitsstand): `windows-debug` ist auf `Visual Studio 18 2026` (x64) umgestellt; `ninja-debug` nutzt weiterhin `Ninja` (`CMakePresets.json:14`). `documented`: Beim dokumentierten Vergleichszeitpunkt war der GitHub-Stand `10e5e75` (historischer Vergleichsstand, nicht der aktuelle HEAD) noch auf `Visual Studio 17 2022`; die lokale Umstellung auf VS2026 war damals ein unveröffentlichter Arbeitsstand. Diese Angabe beschreibt ausschließlich den damaligen Vergleich und ist keine Aussage über den heutigen HEAD. `CMakePresets.json.backup` bewahrt die alte Zeile und ist nicht Teil des veröffentlichten Stands.
+- `observed`/`owner-provided`: Visual Studio 2026 **Community** mit Generator `Visual Studio 18 2026` (`CMakePresets.json:7`); aktuelles Installationsverzeichnis `C:\Program Files\Microsoft Visual Studio\18\Community` (`observed`). CMake und CTest melden über einfache Befehlsnamen `4.3.1-msvc1` (`observed` durch `tester`, Exit-Codes `unknown`). C++/C#-Komponenten und Ninja `1.13.2` sind `owner-provided`, nicht agentenverifiziert. `build/windows-debug/CMakeCache.txt:222,254` und `CMakePresets.json.backup:7` sind **historisch** (erster Rechner, `E:`).
+- `observed` (lokaler Arbeitsstand): `windows-debug` ist auf `Visual Studio 18 2026` (x64) umgestellt; `ninja-debug` nutzt weiterhin `Ninja` (`CMakePresets.json:14`). `documented`: Beim dokumentierten Vergleichszeitpunkt war der GitHub-Stand `10e5e75` noch auf `Visual Studio 17 2022`; die lokale Umstellung auf VS2026 war damals ein unveröffentlichter Arbeitsstand. **Superseded:** Der aktuelle Arbeitsstand ist Branch `docs/opencode-publication-group-2`, HEAD `58aa1f60eb5e67cbf8aa884f694fce208b54819f`; `main`, `10e5e75` und die historische Zählung von 32 Einträgen sind Snapshots (`docs/AGENT_TASKS.md:562,578,586`) und keine Aussage über den heutigen HEAD. `CMakePresets.json.backup` bewahrt die alte Zeile und ist nicht Teil des veröffentlichten Stands.
 - `planned`: Auf dem zweiten Rechner müssen dieselben Werkzeuge und Komponenten lokal vorhanden sein, soweit sie nicht ausdrücklich portabel sind. Installation und Konfiguration dort sind noch nicht vollständig verifiziert (`unknown`).
 - Schreibrechte auf der externen Festplatte für neu erzeugte Build-Verzeichnisse.
 
@@ -105,7 +106,7 @@ Kennzeichnungen: `observed` = direkt geprüftes Ergebnis; `documented` = bisheri
 - **OpenCode-Sitzungen:** `documented`/`planned`: 13 vorhandene Sitzungen sollen exportiert und importiert werden – drei Projektsitzungen in den Hauptcheckout, zehn Setup-Sitzungen in einen separaten, dauerhaften Portable-Setup-Kontext. Die Originale auf `C:` bleiben unangetastet; keine aktive SQLite-Datei wird direkt kopiert. `blocked`: Agenten dürfen `opencode *` nicht in der Shell ausführen; `session export/import` steht nicht in der globalen Allowlist und hat kein Code-Mode-Tool. `unknown`: tatsächlicher Erfolg der Übertragung; der geprüfte portable Zustandsordner war leer. Es wird nicht behauptet, dass Sitzungen bereits übertragen wurden.
 - **Worktree-Erzeugung und -Öffnung:** `observed`: Die getestete Erzeugung bzw. das Öffnen war nicht erfolgreich; OpenCode meldete `Created worktree could not be opened`. Ein Checkout existiert unter `E:\XBridge 1.0\worktrees\portability-worktree-test`. `documented`: Dieser ist nicht als regulärer Git-Worktree registriert. `blocked`: eine erfolgreiche portable Worktree-Verwaltung ist nicht nachgewiesen. Der vorhandene Checkout wird weder gelöscht noch verändert; die Bereinigung erfordert eine Owner-Entscheidung.
 - **Interaktive Berechtigungen:** `unknown`: Ein interaktiver TUI-`ask`-Dialog wurde nicht geprüft; nicht-interaktive Läufe lehnen `ask` ab. `opencode debug config` und `opencode debug agents` sind nicht allowlistet (siehe Abschnitt 3).
-- **XB-0085 / Publikationsprüfung:** `documented`: 32 Einträge wurden geprüft – 13 `READY_FOR_COMMIT`, 18 `NEEDS_REVIEW`, 1 `DO_NOT_PUBLISH`. Es erfolgte keine Veröffentlichung, keine Index-/Referenzänderung; PR #1 bleibt offen und unberührt. Dies ist kein Freigabe- oder Implementierungsbeschluss.
+- **XB-0085 / Publikationsprüfung:** `documented` (historischer Audit-Snapshot): 32 Einträge wurden geprüft – 13 `READY_FOR_COMMIT`, 18 `NEEDS_REVIEW`, 1 `DO_NOT_PUBLISH`. Es erfolgte keine Veröffentlichung, keine Index-/Referenzänderung; PR #1 blieb zum damaligen Zeitpunkt offen und unberührt (`unknown` für eine erneute Prüfung). `observed`/`superseded`: Der aktuelle Arbeitsstand ist Branch `docs/opencode-publication-group-2`, HEAD `58aa1f60eb5e67cbf8aa884f694fce208b54819f`; die Angaben 32 Einträge, `main` und `10e5e75` sind historische Snapshots (`docs/AGENT_TASKS.md:562,578,586`). Dies ist kein Freigabe- oder Implementierungsbeschluss.
 - **Shell-Pattern sind keine Sandbox:** `documented`: Die Regeln in `opencode.jsonc` schützen das Agentenverhalten, nicht den Host-Account.
 
 Siehe auch `docs/RELEASE_CHECKLIST.md`, `docs/AGENT_WORKFLOW.md` und `docs/AGENT_TASKS.md`.

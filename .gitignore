@@ -13,3 +13,7 @@
 *.a
 *.so
 *.dylib
+# Owner-only development artifacts; keep out of publication.
+/.owner-patch-backup/
+/CMakePresets.json.backup
+/debug-*.txt
