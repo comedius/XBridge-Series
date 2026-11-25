@@ -10,6 +10,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(xbridge_core
     src/core/config.cpp
     src/core/runtime.cpp
+    src/analysis/game_intelligence.cpp
+    src/analysis/pe_coff_reader.cpp
     src/cpu/test_cpu.cpp
     src/cpu/x64_instruction_decoder.cpp
     src/cpu/x64_instruction_interpreter.cpp

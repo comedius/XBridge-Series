@@ -7,19 +7,27 @@
 #include "xbridge/memory/memory.hpp"
 #include "xbridge/memory/guest_address.hpp"
 #include "xbridge/memory/guest_address_space.hpp"
+#include "xbridge/memory/guest_virtual_memory.hpp"
 #include "xbridge/memory/guest_memory_result.hpp"
 #include "xbridge/memory/guest_physical_memory.hpp"
 #include "xbridge/memory/guest_region.hpp"
 #include "xbridge/host/execution_policy.hpp"
-#include <span>
+#include "xbridge/analysis/game_intelligence.hpp"
+#include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
-#include <limits>
 #include <stdexcept>
+#include <string>
+#include <string_view>
+#include <system_error>
 #include <type_traits>
 #include <vector>
 
@@ -30,10 +38,10 @@ int failures = 0;
 
 void check(bool condition, const char* message) {
     if (!condition) {
-        std::cerr << "[FAIL] " << message << "\n";
+        std::cerr << "[FAIL] " << message << std::endl;
         ++failures;
     } else {
-        std::cout << "[PASS] " << message << "\n";
+        std::cout << "[PASS] " << message << std::endl;
     }
 }
 
@@ -3200,6 +3208,1947 @@ void test_guest_address_space_atomicity_and_boundaries() {
           "positive accesses at UINT64_MAX fail with AddressOverflow and no mutation");
 }
 
+cpu::X64CpuState make_integration_state(std::uint64_t rip) {
+    cpu::X64CpuState state;
+    state.rip = rip;
+    state.rflags = 0x0000000000000A95ULL;
+    for (std::size_t index = 0; index < state.general_purpose_registers.size(); ++index) {
+        state.general_purpose_registers[index] =
+            0x1122334455667700ULL + static_cast<std::uint64_t>(index);
+    }
+    return state;
+}
+
+bool x64_state_equals(const cpu::X64CpuState& lhs, const cpu::X64CpuState& rhs) noexcept {
+    return lhs.rip == rhs.rip && lhs.rflags == rhs.rflags &&
+           lhs.general_purpose_registers == rhs.general_purpose_registers;
+}
+
+bool memory_results_equal(const memory::MemoryResult& lhs,
+                          const memory::MemoryResult& rhs) noexcept {
+    return lhs.ok == rhs.ok && lhs.fault == rhs.fault &&
+           lhs.access == rhs.access && lhs.context == rhs.context &&
+           lhs.address == rhs.address && lhs.requested_length == rhs.requested_length &&
+           lhs.completed_bytes == rhs.completed_bytes &&
+           lhs.translated_address.has_value() == rhs.translated_address.has_value() &&
+           (!lhs.translated_address.has_value() ||
+            *lhs.translated_address == *rhs.translated_address) &&
+           lhs.region_base.has_value() == rhs.region_base.has_value() &&
+           (!lhs.region_base.has_value() || *lhs.region_base == *rhs.region_base);
+}
+
+const char* memory_fault_name(memory::MemoryFault fault) noexcept {
+    switch (fault) {
+    case memory::MemoryFault::None: return "None";
+    case memory::MemoryFault::Unmapped: return "Unmapped";
+    case memory::MemoryFault::AccessDenied: return "AccessDenied";
+    case memory::MemoryFault::AddressOverflow: return "AddressOverflow";
+    case memory::MemoryFault::InvalidRange: return "InvalidRange";
+    case memory::MemoryFault::Alignment: return "Alignment";
+    case memory::MemoryFault::ResourceExhausted: return "ResourceExhausted";
+    case memory::MemoryFault::DeviceAccessRequired: return "DeviceAccessRequired";
+    case memory::MemoryFault::Unsupported: return "Unsupported";
+    }
+    return "unknown";
+}
+
+std::vector<std::uint8_t> read_physical_snapshot(memory::GuestPhysicalMemory& physical,
+                                                 memory::GuestPhysicalAddress base,
+                                                 std::size_t length,
+                                                 bool& ok) {
+    std::vector<std::uint8_t> bytes(length, std::uint8_t{0U});
+    const auto result = physical.read(
+        base, std::span<std::uint8_t>(bytes.data(), bytes.size()),
+        memory::MemoryAccessContext::Bulk);
+    ok = result.ok && result.completed_bytes == static_cast<std::uint64_t>(length);
+    return bytes;
+}
+
+class RecordingAddressSpaceView final : public memory::IGuestVirtualMemory {
+public:
+    explicit RecordingAddressSpaceView(memory::GuestAddressSpace& space) noexcept
+        : view_(space) {}
+
+    void reset() noexcept {
+        fetch_calls = 0U;
+        max_fetch_length = 0U;
+        oversized_calls = 0U;
+    }
+
+    memory::MemoryResult fetch(memory::GuestVirtualAddress address,
+                               std::span<std::uint8_t> destination) noexcept override {
+        ++fetch_calls;
+        if (destination.size() > max_fetch_length)
+            max_fetch_length = destination.size();
+        if (destination.size() > 15U) {
+            ++oversized_calls;
+            return memory::MemoryResult::failure(
+                memory::MemoryFault::InvalidRange, memory::MemoryAccess::Execute,
+                memory::MemoryAccessContext::Fetch, address.value,
+                static_cast<std::uint64_t>(destination.size()));
+        }
+        return view_.fetch(address, destination);
+    }
+
+    memory::MemoryResult read(memory::GuestVirtualAddress address,
+                              std::span<std::uint8_t> destination) noexcept override {
+        return view_.read(address, destination);
+    }
+
+    memory::MemoryResult write(memory::GuestVirtualAddress address,
+                               std::span<const std::uint8_t> source) noexcept override {
+        return view_.write(address, source);
+    }
+
+    std::size_t fetch_calls{0U};
+    std::size_t max_fetch_length{0U};
+    std::size_t oversized_calls{0U};
+
+private:
+    memory::GuestAddressSpaceView view_;
+};
+
+class ConfigurableVirtualMemory final : public memory::IGuestVirtualMemory {
+public:
+    memory::MemoryResult fetch(memory::GuestVirtualAddress address,
+                               std::span<std::uint8_t> destination) noexcept override {
+        (void)address;
+        ++fetch_calls;
+        if (destination.size() > max_fetch_length)
+            max_fetch_length = destination.size();
+        if (fill_fetch_buffer) {
+            for (std::uint8_t& byte : destination)
+                byte = fill_byte;
+        }
+        return fetch_result;
+    }
+
+    memory::MemoryResult read(memory::GuestVirtualAddress address,
+                              std::span<std::uint8_t> destination) noexcept override {
+        (void)address;
+        ++read_calls;
+        if (fill_read_buffer) {
+            for (std::uint8_t& byte : destination)
+                byte = fill_byte;
+        }
+        return read_result;
+    }
+
+    memory::MemoryResult write(memory::GuestVirtualAddress address,
+                               std::span<const std::uint8_t> source) noexcept override {
+        (void)address;
+        ++write_calls;
+        last_write_size = source.size();
+        for (std::size_t index = 0U;
+             index < source.size() && index < last_write_source.size(); ++index) {
+            last_write_source[index] = source[index];
+        }
+        return write_result;
+    }
+
+    memory::MemoryResult fetch_result{};
+    memory::MemoryResult read_result{};
+    memory::MemoryResult write_result{};
+    std::size_t fetch_calls{0U};
+    std::size_t read_calls{0U};
+    std::size_t write_calls{0U};
+    std::size_t max_fetch_length{0U};
+    bool fill_fetch_buffer{false};
+    bool fill_read_buffer{false};
+    std::uint8_t fill_byte{0x5AU};
+    std::array<std::uint8_t, 8U> last_write_source{};
+    std::size_t last_write_size{0U};
+};
+
+memory::MemoryResult make_diagnostic_failure(memory::MemoryFault fault,
+                                              memory::MemoryAccess access,
+                                              memory::MemoryAccessContext context,
+                                              std::uint64_t requested_length) {
+    auto result = memory::MemoryResult::failure(
+        fault, access, context, 0x123456789ABCDEF0ULL, requested_length);
+    result.translated_address = 0x00FF00FF00FF00FFULL;
+    result.region_base = 0xA5A5A5A5A5A5A5A5ULL;
+    return result;
+}
+
+memory::MemoryResult make_diagnostic_short_success(memory::MemoryAccess access,
+                                                   memory::MemoryAccessContext context,
+                                                   std::uint64_t requested_length,
+                                                   std::uint64_t completed_bytes) {
+    auto result = memory::MemoryResult::success(
+        access, context, 0x123456789ABCDEF0ULL, requested_length, completed_bytes);
+    result.translated_address = 0x1357246835792468ULL;
+    result.region_base = 0x2468135724681357ULL;
+    return result;
+}
+
+void test_x64_step_at_rip_via_execute_only_above_4gib() {
+    using namespace xbridge;
+
+    constexpr std::uint64_t physical_base = 0x2'0000'0000ULL;
+    constexpr std::uint64_t virtual_base = 0x1'0000'0000ULL;
+    const std::array<std::uint8_t, 7U> program{
+        0x90U, 0xB8U, 0x78U, 0x56U, 0x34U, 0x12U, 0x90U};
+
+    memory::GuestPhysicalMemory physical;
+    check(physical.add_region(memory::GuestPhysicalAddress{physical_base}, 32U,
+                              memory::RegionKind::Normal,
+                              memory::MemoryPermissions{false, true, true}).ok,
+          "T1 execute-only fixture adds a writable Normal region above 4 GiB");
+    check(physical.write(memory::GuestPhysicalAddress{physical_base},
+                         std::span<const std::uint8_t>(program.data(), program.size()),
+                         memory::MemoryAccessContext::Bulk).ok,
+          "T1 execute-only fixture seeds NOP, MOV imm32, NOP above 4 GiB");
+
+    memory::GuestAddressSpace space(physical);
+    check(space.map(memory::GuestVirtualAddress{virtual_base},
+                    memory::GuestPhysicalAddress{physical_base}, 32U,
+                    memory::MemoryPermissions{false, false, true}).ok,
+          "T1 virtual mapping grants execute without read or write permission");
+    memory::GuestAddressSpaceView view(space);
+
+    std::array<std::uint8_t, 1U> data_probe{0xA5U};
+    const auto data_denied = view.read(memory::GuestVirtualAddress{virtual_base},
+                                       std::span<std::uint8_t>(data_probe));
+    check(!data_denied.ok && data_denied.fault == memory::MemoryFault::AccessDenied &&
+              data_probe[0] == 0xA5U,
+          "T1 execute-only code has no data-read permission at either layer");
+
+    auto state = make_integration_state(virtual_base);
+    const auto rax_initial = state.gpr(cpu::X64GeneralRegister::Rax);
+    const auto rflags_initial = state.rflags;
+
+    const auto first = cpu::step_x64_at_rip_via(state, view);
+    check(first == cpu::X64ExecuteStatus::Ok && !first.memory_result.has_value() &&
+              state.rip == virtual_base + 1U &&
+              state.gpr(cpu::X64GeneralRegister::Rax) == rax_initial &&
+              state.rflags == rflags_initial,
+          "T1 first fetch step executes NOP at +1 without a data-read permission");
+
+    const auto second = cpu::step_x64_at_rip_via(state, view);
+    check(second == cpu::X64ExecuteStatus::Ok && !second.memory_result.has_value() &&
+              state.rip == virtual_base + 6U &&
+              state.gpr(cpu::X64GeneralRegister::Rax) == 0x12345678ULL &&
+              state.rflags == rflags_initial,
+          "T1 second fetch step executes MOV imm32 at +5 and sets RAX");
+
+    const auto third = cpu::step_x64_at_rip_via(state, view);
+    check(third == cpu::X64ExecuteStatus::Ok && !third.memory_result.has_value() &&
+              state.rip == virtual_base + 7U &&
+              state.gpr(cpu::X64GeneralRegister::Rax) == 0x12345678ULL &&
+              state.rflags == rflags_initial,
+          "T1 third fetch step executes NOP at +1 and preserves RAX");
+}
+
+void test_x64_execute_instruction_via_data_above_4gib_little_endian() {
+    using namespace xbridge;
+
+    constexpr std::uint64_t physical_base = 0x2'0000'0000ULL;
+    constexpr std::uint64_t virtual_base = 0x1'0000'0000ULL;
+    constexpr std::uint64_t data_offset = 0x40ULL;
+    constexpr std::uint64_t store_address = virtual_base + data_offset;
+    constexpr std::uint64_t value = 0x1122334455667788ULL;
+    const std::array<std::uint8_t, 8U> expected_bytes{
+        0x88U, 0x77U, 0x66U, 0x55U, 0x44U, 0x33U, 0x22U, 0x11U};
+    const std::uint8_t store_bytes[] = {0x48U, 0x89U, 0x08U};
+    const std::uint8_t load_bytes[] = {0x48U, 0x8BU, 0x10U};
+
+    memory::GuestPhysicalMemory physical;
+    check(physical.add_region(memory::GuestPhysicalAddress{physical_base}, 0x80U,
+                              memory::RegionKind::Normal,
+                              memory::MemoryPermissions{true, true, true}).ok,
+          "T2 RW fixture adds a Normal region above 4 GiB");
+    memory::GuestAddressSpace space(physical);
+    check(space.map(memory::GuestVirtualAddress{virtual_base},
+                    memory::GuestPhysicalAddress{physical_base}, 0x80U,
+                    memory::MemoryPermissions{true, true, false}).ok,
+          "T2 virtual mapping grants read and write above 4 GiB");
+    memory::GuestAddressSpaceView view(space);
+
+    const auto store = cpu::decode_x64_instruction(store_bytes);
+    const auto load = cpu::decode_x64_instruction(load_bytes);
+    check(store.status == cpu::X64DecodeStatus::Ok && load.status == cpu::X64DecodeStatus::Ok,
+          "T2 64-bit MOV store and load forms decode successfully");
+
+    auto state = make_integration_state(0x2000U);
+    state.gpr(cpu::X64GeneralRegister::Rax) = store_address;
+    state.gpr(cpu::X64GeneralRegister::Rcx) = value;
+    const auto store_result = cpu::execute_instruction_via(store, state, view);
+    check(store_result == cpu::X64ExecuteStatus::Ok &&
+              !store_result.memory_result.has_value() &&
+              state.rip == 0x2000U + store.length &&
+              state.gpr(cpu::X64GeneralRegister::Rcx) == value,
+          "T2 store via the virtual seam advances RIP exactly once and preserves the source GPR");
+
+    std::array<std::uint8_t, 8U> backing{};
+    const auto backing_read = physical.read(
+        memory::GuestPhysicalAddress{physical_base + data_offset},
+        std::span<std::uint8_t>(backing), memory::MemoryAccessContext::Data);
+    check(backing_read.ok && bytes_equal(backing, expected_bytes),
+          "T2 stored bytes are exact little-endian at the physical address above 4 GiB");
+
+    const auto load_result = cpu::execute_instruction_via(load, state, view);
+    check(load_result == cpu::X64ExecuteStatus::Ok &&
+              !load_result.memory_result.has_value() &&
+              state.rip == 0x2000U + store.length + load.length &&
+              state.gpr(cpu::X64GeneralRegister::Rdx) == value,
+          "T2 load via the virtual seam advances RIP once more and returns the stored value");
+}
+
+void test_x64_via_execute_permission_denied_at_mapping_and_region() {
+    using namespace xbridge;
+
+    constexpr std::uint64_t physical_base = 0x2'0000'0000ULL;
+    constexpr std::uint64_t virtual_base = 0x1'0000'0000ULL;
+    const std::uint8_t nop[] = {0x90U};
+
+    const auto check_denied_fetch = [](memory::GuestPhysicalMemory& physical,
+                                       memory::GuestAddressSpace& space,
+                                       std::uint64_t physical_address,
+                                       std::uint64_t virtual_address,
+                                       const char* label) {
+        memory::GuestAddressSpaceView view(space);
+        auto state = make_integration_state(virtual_address);
+        const auto before = state;
+        bool snapshot_ok = false;
+        const auto before_bytes = read_physical_snapshot(
+            physical, memory::GuestPhysicalAddress{physical_address}, 1U, snapshot_ok);
+        check(snapshot_ok, (std::string(label) + ": physical snapshot is readable").c_str());
+
+        const auto result = cpu::step_x64_at_rip_via(state, view);
+        check(result.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+                  result.memory_result.has_value() &&
+                  result.memory_result->fault == memory::MemoryFault::AccessDenied &&
+                  result.memory_result->access == memory::MemoryAccess::Execute &&
+                  result.memory_result->context == memory::MemoryAccessContext::Fetch &&
+                  result.memory_result->address == virtual_address &&
+                  result.memory_result->requested_length == 15U,
+              (std::string(label) + ": fetch reports AccessDenied on the first 15-byte attempt").c_str());
+        check(x64_state_equals(before, state),
+              (std::string(label) + ": denied fetch leaves RIP, RFLAGS and GPRs unchanged").c_str());
+
+        bool after_ok = false;
+        const auto after_bytes = read_physical_snapshot(
+            physical, memory::GuestPhysicalAddress{physical_address}, 1U, after_ok);
+        check(after_ok && after_bytes == before_bytes,
+              (std::string(label) + ": denied fetch leaves guest bytes unchanged").c_str());
+    };
+
+    {
+        memory::GuestPhysicalMemory physical;
+        check(physical.add_region(memory::GuestPhysicalAddress{physical_base}, 16U,
+                                  memory::RegionKind::Normal,
+                                  memory::MemoryPermissions{true, true, true}).ok &&
+                  physical.write(memory::GuestPhysicalAddress{physical_base},
+                                 std::span<const std::uint8_t>(nop),
+                                 memory::MemoryAccessContext::Bulk).ok,
+              "T3 mapping-denial fixture seeds a fully permitted Normal region");
+        memory::GuestAddressSpace space(physical);
+        check(space.map(memory::GuestVirtualAddress{virtual_base},
+                        memory::GuestPhysicalAddress{physical_base}, 16U,
+                        memory::MemoryPermissions{true, true, false}).ok,
+              "T3 mapping permission fixture omits execute while the region permits it");
+        check_denied_fetch(physical, space, physical_base, virtual_base,
+                           "T3 execute missing at mapping layer");
+    }
+
+    {
+        memory::GuestPhysicalMemory physical;
+        check(physical.add_region(memory::GuestPhysicalAddress{physical_base}, 16U,
+                                  memory::RegionKind::Normal,
+                                  memory::MemoryPermissions{true, true, false}).ok &&
+                  physical.write(memory::GuestPhysicalAddress{physical_base},
+                                 std::span<const std::uint8_t>(nop),
+                                 memory::MemoryAccessContext::Bulk).ok,
+              "T3 region-denial fixture seeds a region without execute permission");
+        memory::GuestAddressSpace space(physical);
+        check(space.map(memory::GuestVirtualAddress{virtual_base},
+                        memory::GuestPhysicalAddress{physical_base}, 16U,
+                        memory::MemoryPermissions{false, false, true}).ok,
+              "T3 region permission fixture grants execute at the mapping only");
+        check_denied_fetch(physical, space, physical_base, virtual_base,
+                           "T3 execute missing at region layer");
+    }
+}
+
+void test_x64_via_data_permission_denied_no_partial_write() {
+    using namespace xbridge;
+
+    constexpr std::uint64_t data_offset = 0x40ULL;
+    constexpr std::uint64_t value = 0xDEADBEEFULL;
+    const std::uint8_t store_bytes[] = {0x89U, 0x08U};
+    const std::uint8_t load_bytes[] = {0x8BU, 0x08U};
+    const auto store = cpu::decode_x64_instruction(store_bytes);
+    const auto load = cpu::decode_x64_instruction(load_bytes);
+
+    const auto check_store_denied = [](memory::IGuestVirtualMemory& view,
+                                       memory::GuestPhysicalMemory& physical,
+                                       std::uint64_t physical_base,
+                                       std::uint64_t address,
+                                       const cpu::DecodedInstruction& instruction,
+                                       const char* label) {
+        auto state = make_integration_state(0x2000U);
+        state.gpr(cpu::X64GeneralRegister::Rax) = address;
+        state.gpr(cpu::X64GeneralRegister::Rcx) = value;
+        const auto before = state;
+        bool snapshot_ok = false;
+        const auto before_bytes = read_physical_snapshot(
+            physical, memory::GuestPhysicalAddress{physical_base + data_offset}, 4U,
+            snapshot_ok);
+        check(snapshot_ok, (std::string(label) + ": backing bytes are readable").c_str());
+
+        const auto result = cpu::execute_instruction_via(instruction, state, view);
+        check(result.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+                  result.memory_result.has_value() &&
+                  result.memory_result->fault == memory::MemoryFault::AccessDenied &&
+                  result.memory_result->access == memory::MemoryAccess::Write &&
+                  result.memory_result->context == memory::MemoryAccessContext::Data &&
+                  result.memory_result->address == address &&
+                  result.memory_result->requested_length == 4U,
+              (std::string(label) + ": store reports AccessDenied with full diagnostics").c_str());
+        check(x64_state_equals(before, state),
+              (std::string(label) + ": denied store leaves CPU state unchanged").c_str());
+
+        bool after_ok = false;
+        const auto after_bytes = read_physical_snapshot(
+            physical, memory::GuestPhysicalAddress{physical_base + data_offset}, 4U,
+            after_ok);
+        check(after_ok && after_bytes == before_bytes,
+              (std::string(label) + ": denied store writes no partial bytes").c_str());
+    };
+
+    const auto check_load_denied = [](memory::IGuestVirtualMemory& view,
+                                      std::uint64_t address,
+                                      const cpu::DecodedInstruction& instruction,
+                                      const char* label) {
+        auto state = make_integration_state(0x2000U);
+        state.gpr(cpu::X64GeneralRegister::Rax) = address;
+        state.gpr(cpu::X64GeneralRegister::Rcx) = 0x5A5A5A5AULL;
+        const auto before = state;
+
+        const auto result = cpu::execute_instruction_via(instruction, state, view);
+        check(result.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+                  result.memory_result.has_value() &&
+                  result.memory_result->fault == memory::MemoryFault::AccessDenied &&
+                  result.memory_result->access == memory::MemoryAccess::Read &&
+                  result.memory_result->context == memory::MemoryAccessContext::Data &&
+                  result.memory_result->address == address &&
+                  result.memory_result->requested_length == 4U,
+              (std::string(label) + ": load reports AccessDenied with full diagnostics").c_str());
+        check(x64_state_equals(before, state),
+              (std::string(label) + ": denied load leaves CPU state unchanged").c_str());
+    };
+
+    {
+        constexpr std::uint64_t physical_base = 0x2'0000'0000ULL;
+        constexpr std::uint64_t virtual_base = 0x1'0000'0000ULL;
+        memory::GuestPhysicalMemory physical;
+        check(physical.add_region(memory::GuestPhysicalAddress{physical_base}, 0x80U,
+                                  memory::RegionKind::Normal,
+                                  memory::MemoryPermissions{true, true, true}).ok,
+              "T4 mapping-denial fixture adds a fully permitted region");
+        memory::GuestAddressSpace space(physical);
+        check(space.map(memory::GuestVirtualAddress{virtual_base},
+                        memory::GuestPhysicalAddress{physical_base}, 0x80U,
+                        memory::MemoryPermissions{false, false, true}).ok,
+              "T4 mapping allows execute but denies both data accesses");
+        memory::GuestAddressSpaceView view(space);
+        check_store_denied(view, physical, physical_base, virtual_base + data_offset, store,
+                           "T4 execute-only mapping store");
+        check_load_denied(view, virtual_base + data_offset, load,
+                          "T4 execute-only mapping load");
+    }
+
+    {
+        constexpr std::uint64_t physical_base = 0x3'0000'0000ULL;
+        constexpr std::uint64_t virtual_base = 0x1'0000'1000ULL;
+        memory::GuestPhysicalMemory physical;
+        check(physical.add_region(memory::GuestPhysicalAddress{physical_base}, 0x80U,
+                                  memory::RegionKind::Normal,
+                                  memory::MemoryPermissions{true, false, true}).ok,
+              "T4 region-write-denial fixture adds a readable execute region");
+        memory::GuestAddressSpace space(physical);
+        check(space.map(memory::GuestVirtualAddress{virtual_base},
+                        memory::GuestPhysicalAddress{physical_base}, 0x80U,
+                        memory::MemoryPermissions{true, true, true}).ok,
+              "T4 mapping grants data accesses while the region denies write");
+        memory::GuestAddressSpaceView view(space);
+        check_store_denied(view, physical, physical_base, virtual_base + data_offset, store,
+                           "T4 region without write permission");
+    }
+
+    {
+        constexpr std::uint64_t physical_base = 0x4'0000'0000ULL;
+        constexpr std::uint64_t virtual_base = 0x1'0000'2000ULL;
+        const std::array<std::uint8_t, 4U> pattern{0x11U, 0x22U, 0x33U, 0x44U};
+        memory::GuestPhysicalMemory physical;
+        check(physical.add_region(memory::GuestPhysicalAddress{physical_base}, 0x80U,
+                                  memory::RegionKind::Normal,
+                                  memory::MemoryPermissions{false, true, true}).ok &&
+                  physical.write(memory::GuestPhysicalAddress{physical_base + data_offset},
+                                 std::span<const std::uint8_t>(pattern),
+                                 memory::MemoryAccessContext::Bulk).ok,
+              "T4 region-read-denial fixture seeds a writable execute region");
+        memory::GuestAddressSpace space(physical);
+        check(space.map(memory::GuestVirtualAddress{virtual_base},
+                        memory::GuestPhysicalAddress{physical_base}, 0x80U,
+                        memory::MemoryPermissions{true, true, true}).ok,
+              "T4 mapping grants data reads while the region denies read");
+        memory::GuestAddressSpaceView view(space);
+        check_load_denied(view, virtual_base + data_offset, load,
+                          "T4 region without read permission");
+    }
+}
+
+void test_x64_via_invalid_addresses_no_truncation() {
+    using namespace xbridge;
+
+    constexpr std::uint64_t physical_base = 0x2'0000'0000ULL;
+    constexpr std::uint64_t low_virtual = 0x40ULL;
+    constexpr std::uint64_t first_span_virtual = 0x100ULL;
+    constexpr std::uint64_t second_span_virtual = first_span_virtual + 4U;
+    constexpr std::uint64_t gap_virtual = 0x180ULL;
+    constexpr std::uint64_t high_virtual = 0x1'0000'0040ULL;
+    constexpr std::uint64_t maximum = (std::numeric_limits<std::uint64_t>::max)();
+    constexpr std::uint64_t value = 0xCAFEBABEULL;
+    const std::uint8_t store4_bytes[] = {0x89U, 0x08U};
+    const std::uint8_t store8_bytes[] = {0x48U, 0x89U, 0x08U};
+    const auto store4 = cpu::decode_x64_instruction(store4_bytes);
+    const auto store8 = cpu::decode_x64_instruction(store8_bytes);
+
+    memory::GuestPhysicalMemory physical;
+    check(physical.add_region(memory::GuestPhysicalAddress{physical_base}, 0x100U,
+                              memory::RegionKind::Normal,
+                              memory::MemoryPermissions{true, true, true}).ok,
+          "T5 invalid-address fixture adds a 256-byte Normal region above 4 GiB");
+    memory::GuestAddressSpace space(physical);
+    check(space.map(memory::GuestVirtualAddress{low_virtual},
+                    memory::GuestPhysicalAddress{physical_base}, 0x10U,
+                    memory::MemoryPermissions{true, true, false}).ok &&
+              space.map(memory::GuestVirtualAddress{first_span_virtual},
+                        memory::GuestPhysicalAddress{physical_base + 0x20U}, 4U,
+                        memory::MemoryPermissions{true, true, false}).ok &&
+              space.map(memory::GuestVirtualAddress{second_span_virtual},
+                        memory::GuestPhysicalAddress{physical_base + 0x24U}, 4U,
+                        memory::MemoryPermissions{true, true, false}).ok,
+          "T5 maps a low range and two touching ranges for truncation and spanning tests");
+    memory::GuestAddressSpaceView view(space);
+
+    {
+        auto control = make_integration_state(0x2000U);
+        control.gpr(cpu::X64GeneralRegister::Rax) = low_virtual;
+        control.gpr(cpu::X64GeneralRegister::Rcx) = value;
+        const auto control_result = cpu::execute_instruction_via(store4, control, view);
+        std::array<std::uint8_t, 4U> control_bytes{};
+        const auto control_read = physical.read(
+            memory::GuestPhysicalAddress{physical_base},
+            std::span<std::uint8_t>(control_bytes), memory::MemoryAccessContext::Data);
+        check(control_result == cpu::X64ExecuteStatus::Ok && control_read.ok &&
+                  control_bytes[0] == 0xBEU && control_bytes[1] == 0xBAU &&
+                  control_bytes[2] == 0xFEU && control_bytes[3] == 0xCAU,
+              "T5 positive control proves the low 32-bit mapping would accept a truncated address");
+    }
+
+    bool snapshot_ok = false;
+    const auto backing_before = read_physical_snapshot(
+        physical, memory::GuestPhysicalAddress{physical_base}, 0x100U, snapshot_ok);
+    check(snapshot_ok, "T5 full physical backing snapshot is readable");
+
+    const auto check_store_failure = [&](std::uint64_t address,
+                                         const cpu::DecodedInstruction& instruction,
+                                         memory::MemoryFault expected_fault,
+                                         std::uint64_t expected_length,
+                                         const char* label) {
+        auto state = make_integration_state(0x2000U);
+        state.gpr(cpu::X64GeneralRegister::Rax) = address;
+        state.gpr(cpu::X64GeneralRegister::Rcx) = value;
+        const auto before = state;
+
+        const auto result = cpu::execute_instruction_via(instruction, state, view);
+        check(result.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+                  result.memory_result.has_value() &&
+                  result.memory_result->fault == expected_fault &&
+                  result.memory_result->access == memory::MemoryAccess::Write &&
+                  result.memory_result->context == memory::MemoryAccessContext::Data &&
+                  result.memory_result->address == address &&
+                  result.memory_result->requested_length == expected_length,
+              (std::string(label) + ": reports the expected fault and full 64-bit address").c_str());
+        check(x64_state_equals(before, state),
+              (std::string(label) + ": leaves RIP, RFLAGS and GPRs unchanged").c_str());
+    };
+
+    check_store_failure(maximum, store4, memory::MemoryFault::AddressOverflow, 4U,
+                        "T5 store at UINT64_MAX");
+    check_store_failure(gap_virtual, store4, memory::MemoryFault::Unmapped, 4U,
+                        "T5 store into an unmapped gap");
+    check_store_failure(first_span_virtual, store8, memory::MemoryFault::Unmapped, 8U,
+                        "T5 8-byte store spanning two mappings");
+    check_store_failure(high_virtual, store4, memory::MemoryFault::Unmapped, 4U,
+                        "T5 high address with a valid truncated low address");
+
+    bool after_ok = false;
+    const auto backing_after = read_physical_snapshot(
+        physical, memory::GuestPhysicalAddress{physical_base}, 0x100U, after_ok);
+    check(after_ok && backing_after == backing_before,
+          "T5 all invalid-address stores leave physical backing byte-for-byte unchanged");
+}
+
+void test_x64_step_at_rip_via_bounded_fetch_retry() {
+    using namespace xbridge;
+
+    constexpr std::uint64_t physical_base = 0x2'0000'0000ULL;
+    constexpr std::uint64_t virtual_base = 0x1'0000'0000ULL;
+    const std::array<std::uint64_t, 4U> lengths{1U, 4U, 14U, 15U};
+    const std::uint8_t nop[] = {0x90U};
+
+    memory::GuestPhysicalMemory physical;
+    check(physical.add_region(memory::GuestPhysicalAddress{physical_base}, 0x100U,
+                              memory::RegionKind::Normal,
+                              memory::MemoryPermissions{false, true, true}).ok,
+          "T6 bounded-retry fixture adds a writable execute region");
+    memory::GuestAddressSpace space(physical);
+
+    for (std::size_t index = 0U; index < lengths.size(); ++index) {
+        const auto length = lengths[index];
+        const auto physical_address = physical_base + static_cast<std::uint64_t>(index * 0x10U);
+        const auto virtual_address = virtual_base + static_cast<std::uint64_t>(index * 0x10U);
+        check(space.map(memory::GuestVirtualAddress{virtual_address},
+                        memory::GuestPhysicalAddress{physical_address}, length,
+                        memory::MemoryPermissions{false, false, true}).ok &&
+                  physical.write(memory::GuestPhysicalAddress{physical_address + length - 1U},
+                                 std::span<const std::uint8_t>(nop),
+                                 memory::MemoryAccessContext::Bulk).ok,
+              (std::string("T6 fixture maps length ") + std::to_string(length) +
+               " with a NOP at the last byte").c_str());
+    }
+    constexpr std::uint64_t failure_virtual = virtual_base + 0x50U;
+    check(space.map(memory::GuestVirtualAddress{failure_virtual},
+                    memory::GuestPhysicalAddress{physical_base + 0x50U}, 4U,
+                    memory::MemoryPermissions{false, false, true}).ok,
+          "T6 one-past-end fixture maps exactly four bytes");
+    RecordingAddressSpaceView view(space);
+
+    for (std::size_t index = 0U; index < lengths.size(); ++index) {
+        const auto length = lengths[index];
+        const auto virtual_address = virtual_base + static_cast<std::uint64_t>(index * 0x10U);
+        auto state = make_integration_state(virtual_address + length - 1U);
+        const auto rflags_before = state.rflags;
+        view.reset();
+
+        const auto result = cpu::step_x64_at_rip_via(state, view);
+        check(result == cpu::X64ExecuteStatus::Ok && !result.memory_result.has_value() &&
+                  state.rip == virtual_address + length && state.rflags == rflags_before,
+              (std::string("T6 mapping length ") + std::to_string(length) +
+               ": bounded retry reaches the NOP and advances RIP once").c_str());
+        // The NOP is placed at the final byte of each mapping, so the bounded
+        // retry succeeds only when it descends to a one-byte fetch window.
+        check(view.fetch_calls == 15U && view.max_fetch_length == 15U &&
+                  view.oversized_calls == 0U,
+              (std::string("T6 mapping length ") + std::to_string(length) +
+               ": attempts descend from 15 to one byte without an oversized fetch").c_str());
+    }
+
+    auto failure_state = make_integration_state(failure_virtual + 4U);
+    const auto failure_before = failure_state;
+    view.reset();
+    const auto failure = cpu::step_x64_at_rip_via(failure_state, view);
+    check(failure.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+              failure.memory_result.has_value() &&
+              failure.memory_result->fault == memory::MemoryFault::Unmapped &&
+              failure.memory_result->access == memory::MemoryAccess::Execute &&
+              failure.memory_result->context == memory::MemoryAccessContext::Fetch &&
+              failure.memory_result->address == failure_virtual + 4U &&
+              failure.memory_result->requested_length == 1U,
+          "T6 no complete instruction reports the exact final Unmapped fault");
+    check(x64_state_equals(failure_before, failure_state) &&
+              view.fetch_calls == 15U && view.max_fetch_length == 15U &&
+              view.oversized_calls == 0U,
+          "T6 failed bounded retry changes no CPU state and never fetches more than 15 bytes");
+}
+
+void test_x64_via_memory_fault_propagation() {
+    using namespace xbridge;
+
+    constexpr std::array<memory::MemoryFault, 9U> all_faults{
+        memory::MemoryFault::None,
+        memory::MemoryFault::Unmapped,
+        memory::MemoryFault::AccessDenied,
+        memory::MemoryFault::AddressOverflow,
+        memory::MemoryFault::InvalidRange,
+        memory::MemoryFault::Alignment,
+        memory::MemoryFault::ResourceExhausted,
+        memory::MemoryFault::DeviceAccessRequired,
+        memory::MemoryFault::Unsupported};
+    const std::uint8_t load_bytes[] = {0x8BU, 0x08U};
+    const std::uint8_t store_bytes[] = {0x89U, 0x08U};
+    const auto load = cpu::decode_x64_instruction(load_bytes);
+    const auto store = cpu::decode_x64_instruction(store_bytes);
+
+    for (const auto fault : all_faults) {
+        const std::string label = std::string("T7 fault ") + memory_fault_name(fault);
+
+        {
+            const auto result = make_diagnostic_failure(
+                fault, memory::MemoryAccess::Execute, memory::MemoryAccessContext::Fetch, 15U);
+            ConfigurableVirtualMemory fake;
+            fake.fetch_result = result;
+            auto state = make_integration_state(0x1000U);
+            const auto before = state;
+
+            const auto execution = cpu::step_x64_at_rip_via(state, fake);
+            const auto expected_calls =
+                (result.fault == memory::MemoryFault::Unmapped ||
+                 result.fault == memory::MemoryFault::InvalidRange) ? 15U : 1U;
+            check(execution.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+                      execution.memory_result.has_value() &&
+                      memory_results_equal(*execution.memory_result, result),
+                  (label + ": fetch failure preserves the original MemoryResult").c_str());
+            check(x64_state_equals(before, state) && fake.fetch_calls == expected_calls,
+                  (label + ": fetch failure changes no CPU state and retries only permitted faults").c_str());
+        }
+
+        {
+            const auto result = make_diagnostic_failure(
+                fault, memory::MemoryAccess::Read, memory::MemoryAccessContext::Data, 4U);
+            ConfigurableVirtualMemory fake;
+            fake.read_result = result;
+            auto state = make_integration_state(0x2000U);
+            state.gpr(cpu::X64GeneralRegister::Rax) = 0x3000U;
+            state.gpr(cpu::X64GeneralRegister::Rcx) = 0x5A5A5A5AULL;
+            const auto before = state;
+
+            const auto execution = cpu::execute_instruction_via(load, state, fake);
+            check(execution.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+                      execution.memory_result.has_value() &&
+                      memory_results_equal(*execution.memory_result, result),
+                  (label + ": data-read failure preserves the original MemoryResult").c_str());
+            check(x64_state_equals(before, state) && fake.read_calls == 1U &&
+                      fake.write_calls == 0U,
+                  (label + ": data-read failure changes no CPU state and reads once").c_str());
+        }
+
+        {
+            const auto result = make_diagnostic_failure(
+                fault, memory::MemoryAccess::Write, memory::MemoryAccessContext::Data, 4U);
+            ConfigurableVirtualMemory fake;
+            fake.write_result = result;
+            auto state = make_integration_state(0x2000U);
+            state.gpr(cpu::X64GeneralRegister::Rax) = 0x3000U;
+            state.gpr(cpu::X64GeneralRegister::Rcx) = 0x5A5A5A5AULL;
+            const auto before = state;
+
+            const auto execution = cpu::execute_instruction_via(store, state, fake);
+            check(execution.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+                      execution.memory_result.has_value() &&
+                      memory_results_equal(*execution.memory_result, result),
+                  (label + ": data-write failure preserves the original MemoryResult").c_str());
+            check(x64_state_equals(before, state) && fake.write_calls == 1U &&
+                      fake.read_calls == 0U,
+                  (label + ": data-write failure changes no CPU state and writes once").c_str());
+        }
+    }
+}
+
+void test_x64_virtual_memory_short_completion_failure() {
+    using namespace xbridge;
+
+    const std::uint8_t load_bytes[] = {0x8BU, 0x08U};
+    const std::uint8_t store_bytes[] = {0x89U, 0x08U};
+    const auto load = cpu::decode_x64_instruction(load_bytes);
+    const auto store = cpu::decode_x64_instruction(store_bytes);
+
+    {
+        const auto result = make_diagnostic_short_success(
+            memory::MemoryAccess::Execute, memory::MemoryAccessContext::Fetch, 15U, 3U);
+        ConfigurableVirtualMemory fake;
+        fake.fetch_result = result;
+        fake.fill_fetch_buffer = true;
+        auto state = make_integration_state(0x1000U);
+        const auto before = state;
+
+        const auto execution = cpu::step_x64_at_rip_via(state, fake);
+        check(execution.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+                  execution.memory_result.has_value() &&
+                  memory_results_equal(*execution.memory_result, result) &&
+                  fake.fetch_calls == 1U,
+              "T7 short fetch completion is preserved and rejected without retry");
+        check(x64_state_equals(before, state),
+              "T7 short fetch completion changes no CPU state");
+    }
+
+    {
+        const auto result = make_diagnostic_short_success(
+            memory::MemoryAccess::Read, memory::MemoryAccessContext::Data, 4U, 2U);
+        ConfigurableVirtualMemory fake;
+        fake.read_result = result;
+        fake.fill_read_buffer = true;
+        auto state = make_integration_state(0x2000U);
+        state.gpr(cpu::X64GeneralRegister::Rax) = 0x3000U;
+        state.gpr(cpu::X64GeneralRegister::Rcx) = 0x5A5A5A5AULL;
+        const auto before = state;
+
+        const auto execution = cpu::execute_instruction_via(load, state, fake);
+        check(execution.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+                  execution.memory_result.has_value() &&
+                  memory_results_equal(*execution.memory_result, result) &&
+                  fake.read_calls == 1U,
+              "T7 short data-read completion is preserved unchanged");
+        check(x64_state_equals(before, state),
+              "T7 short data-read completion never commits a destination GPR");
+    }
+
+    {
+        const auto result = make_diagnostic_short_success(
+            memory::MemoryAccess::Write, memory::MemoryAccessContext::Data, 4U, 2U);
+        ConfigurableVirtualMemory fake;
+        fake.write_result = result;
+        auto state = make_integration_state(0x2000U);
+        state.gpr(cpu::X64GeneralRegister::Rax) = 0x3000U;
+        state.gpr(cpu::X64GeneralRegister::Rcx) = 0xDEADBEEFULL;
+        const auto before = state;
+
+        const auto execution = cpu::execute_instruction_via(store, state, fake);
+        check(execution.status == cpu::X64ExecuteStatus::MemoryAccessError &&
+                  execution.memory_result.has_value() &&
+                  memory_results_equal(*execution.memory_result, result) &&
+                  fake.write_calls == 1U && fake.last_write_size == 4U &&
+                  fake.last_write_source[0] == 0xEFU && fake.last_write_source[1] == 0xBEU &&
+                  fake.last_write_source[2] == 0xADU && fake.last_write_source[3] == 0xDEU,
+              "T7 short data-write completion receives the full little-endian source once");
+        check(x64_state_equals(before, state),
+              "T7 short data-write completion changes no CPU state");
+    }
+}
+
+struct LegacyParityCase {
+    std::size_t memory_size;
+    std::uint32_t load_address;
+    std::vector<std::uint8_t> load_bytes;
+    std::uint64_t rip;
+    std::uint64_t rax;
+    std::uint64_t rcx;
+    std::uint64_t rdx;
+    std::vector<std::uint8_t> instruction_bytes;
+    const char* label;
+};
+
+std::vector<LegacyParityCase> legacy_parity_cases() {
+    std::vector<LegacyParityCase> cases;
+    cases.push_back({512U, 0x100U,
+                     {0x90U, 0xB8U, 0x78U, 0x56U, 0x34U, 0x12U, 0x90U},
+                     0x100U, 0xAAAAAAAAAAAAAAAAULL, 0xBBBBBBBBBBBBBBBBULL, 0U,
+                     {0x90U}, "success NOP"});
+    cases.push_back({512U, 0x100U,
+                     {0x90U, 0xB8U, 0x78U, 0x56U, 0x34U, 0x12U, 0x90U},
+                     0x100U, 0U, 0xBBBBBBBBBBBBBBBBULL, 0U,
+                     {0xB8U, 0x78U, 0x56U, 0x34U, 0x12U}, "success MOV imm32"});
+    cases.push_back({256U, 0U, {}, 0x200U, 0x10U, 0xDEADBEEFULL, 0U,
+                     {0x89U, 0x08U}, "success 4-byte store"});
+    cases.push_back({16U, 0U, {0x89U, 0x08U}, 0U, 0x0DU, 0xDEADBEEFULL, 0U,
+                     {0x89U, 0x08U}, "out-of-bounds 4-byte store"});
+    cases.push_back({64U, 0U, {0x89U, 0x08U}, 0U, 0x1'0000'0000ULL, 0xDEADBEEFULL, 0U,
+                     {0x89U, 0x08U}, "store above UINT32_MAX"});
+    cases.push_back({16U, 15U, {0x90U}, 15U, 0x1111111111111111ULL,
+                     0x2222222222222222ULL, 0x3333333333333333ULL,
+                     {0x90U}, "NOP at the last valid byte"});
+    cases.push_back({16U, 0U, {}, 16U, 0x1111111111111111ULL,
+                     0x2222222222222222ULL, 0x3333333333333333ULL,
+                     {0x90U}, "RIP one past the last valid byte"});
+    return cases;
+}
+
+memory::GuestMemory make_parity_memory(const LegacyParityCase& test_case) {
+    memory::GuestMemory memory(test_case.memory_size);
+    if (!test_case.load_bytes.empty()) {
+        memory.load(test_case.load_address, test_case.load_bytes);
+    }
+    return memory;
+}
+
+cpu::X64CpuState make_parity_state(const LegacyParityCase& test_case) {
+    auto state = make_integration_state(test_case.rip);
+    state.gpr(cpu::X64GeneralRegister::Rax) = test_case.rax;
+    state.gpr(cpu::X64GeneralRegister::Rcx) = test_case.rcx;
+    state.gpr(cpu::X64GeneralRegister::Rdx) = test_case.rdx;
+    return state;
+}
+
+std::vector<std::uint8_t> snapshot_guest_memory(const memory::GuestMemory& memory) {
+    std::vector<std::uint8_t> bytes(memory.size());
+    for (std::size_t address = 0U; address < memory.size(); ++address) {
+        bytes[address] = memory.read8(static_cast<std::uint32_t>(address));
+    }
+    return bytes;
+}
+
+void check_parity_outcome(const cpu::X64ExecutionResult& via_result,
+                          cpu::X64ExecuteStatus legacy_status,
+                          const cpu::X64CpuState& legacy_state,
+                          const cpu::X64CpuState& via_state,
+                          const memory::GuestMemory& legacy_memory,
+                          const memory::GuestMemory& via_memory,
+                          const char* label) {
+    const std::string prefix = std::string("T8 ") + label;
+    check(via_result.status == legacy_status,
+          (prefix + ": identical execution status").c_str());
+    check(x64_state_equals(legacy_state, via_state),
+          (prefix + ": identical RIP, RFLAGS and GPRs").c_str());
+    check(snapshot_guest_memory(legacy_memory) == snapshot_guest_memory(via_memory),
+          (prefix + ": identical guest-memory bytes").c_str());
+    if (legacy_status == cpu::X64ExecuteStatus::Ok) {
+        check(!via_result.memory_result.has_value(),
+              (prefix + ": success leaves memory_result empty").c_str());
+    } else {
+        check(via_result.memory_result.has_value() &&
+                  result_invariant(*via_result.memory_result) &&
+                  via_result.memory_result->fault != memory::MemoryFault::None,
+              (prefix + ": failure carries a valid MemoryResult").c_str());
+    }
+}
+
+void test_x64_execute_instruction_via_legacy_parity() {
+    using namespace xbridge;
+
+    for (const auto& test_case : legacy_parity_cases()) {
+        auto legacy_memory = make_parity_memory(test_case);
+        auto via_memory = make_parity_memory(test_case);
+        auto legacy_state = make_parity_state(test_case);
+        auto via_state = make_parity_state(test_case);
+        const auto instruction = cpu::decode_x64_instruction(std::span<const std::uint8_t>(
+            test_case.instruction_bytes.data(), test_case.instruction_bytes.size()));
+        check(instruction.status == cpu::X64DecodeStatus::Ok,
+              (std::string("T8 execute_instruction_via ") + test_case.label +
+               ": instruction decodes Ok").c_str());
+
+        const auto legacy_status =
+            cpu::execute_instruction(instruction, legacy_state, legacy_memory);
+        memory::GuestMemoryView view(via_memory);
+        const auto via_result = cpu::execute_instruction_via(instruction, via_state, view);
+        check_parity_outcome(via_result, legacy_status, legacy_state, via_state,
+                             legacy_memory, via_memory,
+                             (std::string("execute_instruction_via ") + test_case.label).c_str());
+    }
+}
+
+void test_x64_step_instruction_via_legacy_parity() {
+    using namespace xbridge;
+
+    for (const auto& test_case : legacy_parity_cases()) {
+        auto legacy_memory = make_parity_memory(test_case);
+        auto via_memory = make_parity_memory(test_case);
+        auto legacy_state = make_parity_state(test_case);
+        auto via_state = make_parity_state(test_case);
+        const std::span<const std::uint8_t> bytes(
+            test_case.instruction_bytes.data(), test_case.instruction_bytes.size());
+
+        const auto legacy_status = cpu::step_x64_instruction(bytes, legacy_state, legacy_memory);
+        memory::GuestMemoryView view(via_memory);
+        const auto via_result = cpu::step_x64_instruction_via(bytes, via_state, view);
+        check_parity_outcome(via_result, legacy_status, legacy_state, via_state,
+                             legacy_memory, via_memory,
+                             (std::string("step_x64_instruction_via ") + test_case.label).c_str());
+    }
+}
+
+void test_x64_step_at_rip_via_legacy_parity() {
+    using namespace xbridge;
+
+    for (const auto& test_case : legacy_parity_cases()) {
+        auto legacy_memory = make_parity_memory(test_case);
+        auto via_memory = make_parity_memory(test_case);
+        auto legacy_state = make_parity_state(test_case);
+        auto via_state = make_parity_state(test_case);
+
+        const auto legacy_status = cpu::step_x64_at_rip(legacy_state, legacy_memory);
+        memory::GuestMemoryView view(via_memory);
+        const auto via_result = cpu::step_x64_at_rip_via(via_state, view);
+        check_parity_outcome(via_result, legacy_status, legacy_state, via_state,
+                             legacy_memory, via_memory,
+                             (std::string("step_x64_at_rip_via ") + test_case.label).c_str());
+    }
+}
+
+// XB-NEXT-DEVELOPMENT-02-F — analyzer tests with synthetic data.
+
+constexpr std::uint16_t analysis_pe_offset = 0x80U;
+constexpr std::uint16_t analysis_optional_size = 0xF0U;
+constexpr std::uint32_t analysis_section_rva = 0x1000U;
+constexpr std::size_t analysis_section_raw_offset = 0x400U;
+constexpr std::size_t analysis_section_raw_size = 0x1000U;
+
+void analysis_put_u16(std::vector<std::uint8_t>& bytes, std::size_t at, std::uint16_t value) {
+    if (at + 2U > bytes.size())
+        return;
+    bytes[at] = static_cast<std::uint8_t>(value & 0xFFU);
+    bytes[at + 1U] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
+}
+
+void analysis_put_u32(std::vector<std::uint8_t>& bytes, std::size_t at, std::uint32_t value) {
+    if (at + 4U > bytes.size())
+        return;
+    for (std::size_t index = 0U; index < 4U; ++index) {
+        bytes[at + index] = static_cast<std::uint8_t>((value >> (8U * index)) & 0xFFU);
+    }
+}
+
+void analysis_put_u64(std::vector<std::uint8_t>& bytes, std::size_t at, std::uint64_t value) {
+    if (at + 8U > bytes.size())
+        return;
+    for (std::size_t index = 0U; index < 8U; ++index) {
+        bytes[at + index] = static_cast<std::uint8_t>((value >> (8U * index)) & 0xFFU);
+    }
+}
+
+void analysis_put_ascii(std::vector<std::uint8_t>& bytes, std::size_t at,
+                        std::string_view text) {
+    for (std::size_t index = 0U; index < text.size(); ++index) {
+        if (at + index >= bytes.size())
+            return;
+        bytes[at + index] = static_cast<std::uint8_t>(static_cast<unsigned char>(text[index]));
+    }
+}
+
+std::size_t analysis_rva_offset(std::uint32_t rva) noexcept {
+    return analysis_section_raw_offset + static_cast<std::size_t>(rva - analysis_section_rva);
+}
+
+std::vector<std::uint8_t> analysis_bytes_from_text(std::string_view text) {
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(text.size());
+    for (char c : text) {
+        bytes.push_back(static_cast<std::uint8_t>(static_cast<unsigned char>(c)));
+    }
+    return bytes;
+}
+
+// Builds a small, self-contained PE32+ image whose directories all point into
+// one Normal-looking .rdata section. No bytes are derived from a real binary.
+std::vector<std::uint8_t> analysis_make_pe32plus_x64(std::uint32_t timestamp) {
+    std::vector<std::uint8_t> bytes(0x1400U, std::uint8_t{0U});
+    bytes[0U] = static_cast<std::uint8_t>('M');
+    bytes[1U] = static_cast<std::uint8_t>('Z');
+    analysis_put_u32(bytes, 0x3CU, analysis_pe_offset);
+
+    const std::size_t coff = static_cast<std::size_t>(analysis_pe_offset) + 4U;
+    bytes[analysis_pe_offset] = static_cast<std::uint8_t>('P');
+    bytes[analysis_pe_offset + 1U] = static_cast<std::uint8_t>('E');
+    analysis_put_u16(bytes, coff, 0x8664U);
+    analysis_put_u16(bytes, coff + 2U, 1U);
+    analysis_put_u32(bytes, coff + 4U, timestamp);
+    analysis_put_u16(bytes, coff + 16U, analysis_optional_size);
+    analysis_put_u16(bytes, coff + 18U, 0x0022U);
+
+    const std::size_t optional = coff + 20U;
+    analysis_put_u16(bytes, optional, 0x020BU);
+    analysis_put_u32(bytes, optional + 16U, 0x1000U);
+    analysis_put_u64(bytes, optional + 24U, 0x0000000140000000ULL);
+    analysis_put_u32(bytes, optional + 60U, 0x400U);
+    analysis_put_u16(bytes, optional + 68U, 14U);
+    analysis_put_u16(bytes, optional + 70U, 0x0060U);
+    analysis_put_u32(bytes, optional + 108U, 16U);
+
+    const auto set_directory = [&bytes, optional](std::size_t index, std::uint32_t rva,
+                                                  std::uint32_t size) {
+        const std::size_t at = optional + 112U + index * 8U;
+        analysis_put_u32(bytes, at, rva);
+        analysis_put_u32(bytes, at + 4U, size);
+    };
+    set_directory(0U, 0x1000U, 0x400U); // export
+    set_directory(1U, 0x1400U, 0x40U);  // import
+    set_directory(2U, 0x1600U, 0x80U);  // resource
+    set_directory(5U, 0x1700U, 0x0CU);  // base relocation
+    set_directory(6U, 0x1780U, 0x1CU);  // debug
+
+    const std::size_t section = optional + analysis_optional_size;
+    analysis_put_ascii(bytes, section, ".rdata");
+    analysis_put_u32(bytes, section + 8U, 0x1000U);
+    analysis_put_u32(bytes, section + 12U, analysis_section_rva);
+    analysis_put_u32(bytes, section + 16U, static_cast<std::uint32_t>(analysis_section_raw_size));
+    analysis_put_u32(bytes, section + 20U, static_cast<std::uint32_t>(analysis_section_raw_offset));
+
+    // Export directory: name, function name, forwarder, EAT, name and ordinal tables.
+    analysis_put_u32(bytes, analysis_rva_offset(0x1000U) + 12U, 0x1200U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1000U) + 16U, 1U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1000U) + 20U, 1U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1000U) + 24U, 1U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1000U) + 28U, 0x1300U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1000U) + 32U, 0x1310U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1000U) + 36U, 0x1320U);
+    analysis_put_ascii(bytes, analysis_rva_offset(0x1200U), "SynthExport.dll");
+    analysis_put_ascii(bytes, analysis_rva_offset(0x1220U), "SyntheticFunction");
+    analysis_put_ascii(bytes, analysis_rva_offset(0x1240U), "OTHER.dll.Forwarded");
+    analysis_put_u32(bytes, analysis_rva_offset(0x1300U), 0x1240U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1310U), 0x1220U);
+    analysis_put_u16(bytes, analysis_rva_offset(0x1320U), 0U);
+
+    // Import directory: one descriptor, one DLL and one named import.
+    analysis_put_u32(bytes, analysis_rva_offset(0x1400U), 0x1540U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1400U) + 12U, 0x1500U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1400U) + 16U, 0x1540U);
+    analysis_put_ascii(bytes, analysis_rva_offset(0x1500U), "SYNTHAPI.dll");
+    analysis_put_u64(bytes, analysis_rva_offset(0x1540U), 0x1560U);
+    analysis_put_u16(bytes, analysis_rva_offset(0x1560U), 0x10U);
+    analysis_put_ascii(bytes, analysis_rva_offset(0x1560U) + 2U, "SyntheticImport");
+
+    // Resource tree: root type, language subdirectory, one data entry.
+    analysis_put_u16(bytes, analysis_rva_offset(0x1600U) + 14U, 1U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1600U) + 16U, 16U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1600U) + 20U, 0x80000020U);
+    analysis_put_u16(bytes, analysis_rva_offset(0x1620U) + 14U, 1U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1620U) + 16U, 1U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1620U) + 20U, 0x50U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1650U), 0x1660U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1650U) + 4U, 7U);
+
+    // Base relocations: DIR64 and HIGHLOW entries in one complete block.
+    analysis_put_u32(bytes, analysis_rva_offset(0x1700U), 0x1000U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1700U) + 4U, 12U);
+    analysis_put_u16(bytes, analysis_rva_offset(0x1700U) + 8U,
+                     static_cast<std::uint16_t>((10U << 12) | 0x123U));
+    analysis_put_u16(bytes, analysis_rva_offset(0x1700U) + 10U,
+                     static_cast<std::uint16_t>((3U << 12) | 0x456U));
+
+    // Debug directory: one CODEVIEW descriptor with in-prefix raw pointers.
+    analysis_put_u32(bytes, analysis_rva_offset(0x1780U) + 12U, 2U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1780U) + 20U, 0x17A0U);
+    analysis_put_u32(bytes, analysis_rva_offset(0x1780U) + 24U,
+                     static_cast<std::uint32_t>(analysis_rva_offset(0x17A0U)));
+    return bytes;
+}
+
+// Creates the standard synthetic PE32+ image with the root resource type
+// replaced by a UTF-16LE name. Every byte is test-generated.
+std::vector<std::uint8_t> analysis_make_pe32plus_named_resource(
+    std::uint32_t name_rva, std::uint16_t unit_count,
+    std::string_view in_cap_units, char after_cap_unit) {
+    auto bytes = analysis_make_pe32plus_x64(0x5F5E0FF0U);
+    constexpr std::uint32_t resource_root_rva = 0x1600U;
+
+    const std::size_t root = analysis_rva_offset(resource_root_rva);
+    analysis_put_u16(bytes, root + 12U, 1U); // one named resource type
+    analysis_put_u16(bytes, root + 14U, 0U); // no numeric resource type
+    analysis_put_u32(bytes, root + 16U,
+                     0x80000000U | (name_rva - resource_root_rva));
+
+    const std::size_t name = analysis_rva_offset(name_rva);
+    analysis_put_u16(bytes, name, unit_count);
+    for (std::size_t index = 0U; index < unit_count; ++index) {
+        const char unit = index < in_cap_units.size() ? in_cap_units[index] : after_cap_unit;
+        analysis_put_u16(bytes, name + 2U + index * 2U,
+                         static_cast<std::uint16_t>(static_cast<unsigned char>(unit)));
+    }
+    return bytes;
+}
+
+struct AnalysisFixture {
+    std::filesystem::path root;
+    bool ok{false};
+};
+
+AnalysisFixture analysis_make_fixture(std::string_view label) {
+    AnalysisFixture fixture;
+    std::error_code ec;
+    const std::filesystem::path base = std::filesystem::temp_directory_path(ec);
+    if (ec)
+        return fixture;
+
+    static std::uint64_t sequence = 0U;
+    for (unsigned attempt = 0U; attempt < 64U; ++attempt) {
+        const auto stamp = static_cast<std::uint64_t>(
+            std::chrono::steady_clock::now().time_since_epoch().count());
+        const std::string name = "xbridge_analysis_" + std::string(label) + "_" +
+                                 std::to_string(stamp) + "_" + std::to_string(sequence++) +
+                                 "_" + std::to_string(attempt);
+        const std::filesystem::path candidate = base / name;
+        std::error_code create_ec;
+        if (std::filesystem::create_directories(candidate, create_ec) && !create_ec) {
+            fixture.root = candidate;
+            fixture.ok = true;
+            return fixture;
+        }
+    }
+    return fixture;
+}
+
+void analysis_cleanup_fixture(const AnalysisFixture& fixture) {
+    if (fixture.root.empty())
+        return;
+    std::error_code ec;
+    (void)std::filesystem::remove_all(fixture.root, ec);
+}
+
+bool analysis_write_file(const std::filesystem::path& path,
+                         const std::vector<std::uint8_t>& bytes) {
+    std::error_code ec;
+    if (path.has_parent_path()) {
+        (void)std::filesystem::create_directories(path.parent_path(), ec);
+        if (ec)
+            return false;
+    }
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (!stream.is_open())
+        return false;
+    if (!bytes.empty()) {
+        stream.write(reinterpret_cast<const char*>(bytes.data()),
+                     static_cast<std::streamsize>(bytes.size()));
+    }
+    stream.close();
+    return stream.good();
+}
+
+struct AnalysisFileSnapshot {
+    bool ok{false};
+    std::uintmax_t size{0U};
+    std::filesystem::file_time_type modified{};
+    std::vector<std::uint8_t> bytes;
+};
+
+AnalysisFileSnapshot analysis_snapshot_file(const std::filesystem::path& path) {
+    AnalysisFileSnapshot snapshot;
+    std::error_code ec;
+    snapshot.size = std::filesystem::file_size(path, ec);
+    if (ec)
+        return snapshot;
+    snapshot.modified = std::filesystem::last_write_time(path, ec);
+    if (ec)
+        return snapshot;
+
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream.is_open())
+        return snapshot;
+    stream.seekg(0U, std::ios::end);
+    const std::streamsize length = stream.tellg();
+    if (length < 0)
+        return snapshot;
+    stream.seekg(0U, std::ios::beg);
+    snapshot.bytes.resize(static_cast<std::size_t>(length));
+    if (length > 0) {
+        stream.read(reinterpret_cast<char*>(snapshot.bytes.data()), length);
+    }
+    snapshot.ok = stream.good() || stream.eof();
+    return snapshot;
+}
+
+bool analysis_text_contains(std::string_view text, std::string_view needle) noexcept {
+    return text.find(needle) != std::string_view::npos;
+}
+
+bool analysis_vector_contains(const std::vector<std::string>& values,
+                              std::string_view needle) noexcept {
+    for (const std::string& value : values) {
+        if (analysis_text_contains(value, needle))
+            return true;
+    }
+    return false;
+}
+
+bool analysis_vector_has_exact(const std::vector<std::string>& values,
+                               std::string_view expected) noexcept {
+    for (const std::string& value : values) {
+        if (std::string_view(value) == expected)
+            return true;
+    }
+    return false;
+}
+
+const analysis::AnalysisEntry* analysis_find_entry(const analysis::AnalysisReport& report,
+                                                   std::string_view relative_path) noexcept {
+    for (const analysis::AnalysisEntry& entry : report.entries) {
+        if (std::string_view(entry.relative_path) == relative_path)
+            return &entry;
+    }
+    return nullptr;
+}
+
+bool analysis_entries_sorted(const analysis::AnalysisReport& report) noexcept {
+    for (std::size_t index = 1U; index < report.entries.size(); ++index) {
+        if (report.entries[index - 1U].relative_path >= report.entries[index].relative_path)
+            return false;
+    }
+    return true;
+}
+
+bool analysis_has_false_platform_claim(const analysis::AnalysisEntry& entry) noexcept {
+    return analysis_text_contains(entry.architecture, "x64") ||
+           analysis_text_contains(entry.architecture, "amd64") ||
+           analysis_text_contains(entry.architecture, "pe32plus") ||
+           analysis_vector_contains(entry.platform_indicators, "pe_machine=") ||
+           analysis_vector_contains(entry.platform_indicators, "pe_subsystem=") ||
+           analysis_vector_contains(entry.platform_indicators, "gdk_");
+}
+
+bool analysis_has_affirmative_windows_claim(const std::vector<std::string>& values) noexcept {
+    for (const std::string& value : values) {
+        if (analysis_text_contains(value, "establishes Windows compatibility") ||
+            analysis_text_contains(value, "Windows compatibility confirmed") ||
+            analysis_text_contains(value, "is Windows compatible"))
+            return true;
+    }
+    return false;
+}
+
+void test_analysis_valid_pe32plus_x64_synthetic() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("valid_pe");
+    check(fixture.ok, "analyzer valid-PE fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    check(analysis_write_file(fixture.root / "synthetic_pe64.bin",
+                              analysis_make_pe32plus_x64(0x5F5E0FF0U)),
+          "analyzer valid-PE fixture writes a synthetic PE32+ x64 image");
+
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw([&] { report = analysis::analyze_directory(fixture.root, error); },
+                         "analyzer valid-PE scan does not throw");
+    check(!error && report.entries.size() == 1U,
+          "analyzer valid-PE scan succeeds with exactly one entry");
+    const analysis::AnalysisEntry* entry = analysis_find_entry(report, "synthetic_pe64.bin");
+    check(entry != nullptr, "analyzer valid-PE entry is found by relative path");
+    if (entry == nullptr) {
+        analysis_cleanup_fixture(fixture);
+        return;
+    }
+
+    check(entry->status == analysis::DetectionStatus::Indicator &&
+              analysis::status_name(entry->status) == "indicator",
+          "synthetic PE32+ x64 image is classified only as an indicator");
+    check(entry->architecture == "x64_amd64_pe32plus",
+          "synthetic image reports x64 AMD64 PE32+ architecture");
+    check(entry->file_type == "pe", "synthetic image reports file_type pe");
+
+    check(analysis_vector_has_exact(
+              entry->pe_fields,
+              "machine=0x8664 (IMAGE_FILE_MACHINE_AMD64, x64 indicator only)") &&
+              analysis_vector_has_exact(entry->pe_fields, "optional_magic=0x020b (PE32+)") &&
+              analysis_vector_has_exact(
+                  entry->pe_fields,
+                  "subsystem=14 (IMAGE_SUBSYSTEM_XBOX indicator only)") &&
+              analysis_vector_has_exact(entry->pe_fields, "number_of_sections=1") &&
+              analysis_vector_has_exact(entry->pe_fields, "size_of_optional_header=240"),
+          "synthetic PE fields contain the confirmed machine, magic, subsystem and header values");
+    check(analysis_vector_has_exact(
+              entry->pe_fields,
+              "machine_magic_agreement=amd64_pe32plus (indicator only; not compatibility or executability)"),
+          "machine/magic agreement is labeled as an indicator only");
+
+    check(analysis_vector_has_exact(
+              entry->platform_indicators,
+              "pe_machine=0x8664+magic=0x20b (AMD64/PE32+ indicator only; not compatibility or executability)") &&
+              analysis_vector_has_exact(
+                  entry->platform_indicators,
+                  "pe_subsystem=14 (IMAGE_SUBSYSTEM_XBOX indicator only; retail use unknown)"),
+          "synthetic PE platform indicators are explicitly labeled as indicators");
+
+    check(analysis_vector_has_exact(entry->imports, "SYNTHAPI.dll") &&
+              analysis_vector_has_exact(entry->imports, "SYNTHAPI.dll!SyntheticImport") &&
+              analysis_vector_has_exact(entry->dependencies, "SYNTHAPI.dll"),
+          "synthetic import descriptor, named import and dependency are enumerated");
+    check(analysis_vector_has_exact(entry->exports, "export_dll:SynthExport.dll") &&
+              analysis_vector_has_exact(entry->exports, "SyntheticFunction (ordinal 1)") &&
+              analysis_vector_has_exact(entry->exports, "forwarder:OTHER.dll.Forwarded"),
+          "synthetic export name, ordinal and forwarder are enumerated");
+    check(analysis_vector_has_exact(entry->relocation_types, "10 (DIR64)") &&
+              analysis_vector_has_exact(entry->relocation_types, "3 (HIGHLOW)") &&
+              analysis_vector_has_exact(entry->debug_types, "2 (CODEVIEW)") &&
+              analysis_vector_has_exact(entry->resource_kinds, "resource_type=id:16") &&
+              analysis_vector_has_exact(entry->resource_kinds, "resource_data_size=7"),
+          "synthetic relocation, debug and resource directories are enumerated");
+
+    check(analysis_vector_has_exact(
+              entry->uncertainties,
+              "PE32+ metadata does not establish Windows compatibility or direct executability") &&
+              !analysis_has_affirmative_windows_claim(entry->uncertainties),
+          "synthetic PE uncertainty explicitly denies a Windows-compatibility claim");
+
+    analysis_cleanup_fixture(fixture);
+}
+
+void test_analysis_gdk_manifest_indicators() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("gdk_manifest");
+    check(fixture.ok, "analyzer GDK fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    const std::string manifest =
+        "<?xml version=\"1.0\"?>\n"
+        "<Game TargetDeviceFamily=\"Scarlett\" Architecture=\"x64\" />\n";
+    check(analysis_write_file(fixture.root / "MicrosoftGame.config",
+                              analysis_bytes_from_text(manifest)),
+          "analyzer GDK fixture writes a synthetic MicrosoftGame.config");
+
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw([&] { report = analysis::analyze_directory(fixture.root, error); },
+                         "analyzer GDK scan does not throw");
+    check(!error && report.entries.size() == 1U,
+          "analyzer GDK scan succeeds with exactly one entry");
+    const analysis::AnalysisEntry* entry = analysis_find_entry(report, "MicrosoftGame.config");
+    check(entry != nullptr, "analyzer GDK entry is found by relative path");
+    if (entry == nullptr) {
+        analysis_cleanup_fixture(fixture);
+        return;
+    }
+
+    check(entry->status == analysis::DetectionStatus::Indicator &&
+              entry->file_type == "gdk_manifest",
+          "GDK manifest is classified as an indicator with file_type gdk_manifest");
+    check(analysis_vector_has_exact(
+              entry->platform_indicators,
+              "gdk_architecture=x64 (manifest indicator only)") &&
+              analysis_vector_has_exact(
+                  entry->platform_indicators,
+                  "gdk_target_device_family=Scarlett (manifest indicator only)"),
+          "GDK manifest exposes Scarlett and x64 as declarative indicators only");
+    check(entry->imports.empty() && entry->exports.empty() && entry->dependencies.empty() &&
+              entry->relocation_types.empty() && entry->debug_types.empty() &&
+              !analysis_text_contains(entry->architecture, "x64_amd64_pe32plus"),
+          "GDK manifest adds no PE-only fields or x64 PE architecture claim");
+    check(analysis_vector_has_exact(
+              entry->pe_fields,
+              "pe_coff=not_applicable (file is not a PE/COFF image)") &&
+              analysis_vector_contains(
+                  entry->uncertainties,
+                  "manifest values are declarative configuration; not verified platform behavior"),
+          "GDK manifest keeps PE fields not applicable and records declarative uncertainty");
+
+    analysis_cleanup_fixture(fixture);
+}
+
+void test_analysis_weak_extension_indicators() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("weak_ext");
+    check(fixture.ok, "analyzer weak-extension fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    struct WeakCase {
+        const char* name;
+        const char* file_type;
+        const char* indicator;
+        const char* uncertainty;
+    };
+    const std::array<WeakCase, 4U> cases{{
+        {"package.xvc", "xvc_container", "container_extension=.xvc",
+         "container payload internals unknown"},
+        {"package.msixvc", "msixvc_container", "container_extension=.msixvc",
+         "container payload internals unknown"},
+        {"texture.dds", "dds", "weak_resource_extension=.dds", "false positives"},
+        {"pixel.dxil", "shader", "weak_shader_extension=.dxil", "false positives"},
+    }};
+    const std::vector<std::uint8_t> payload = analysis_bytes_from_text("synthetic weak payload");
+
+    for (const WeakCase& test_case : cases) {
+        check(analysis_write_file(fixture.root / test_case.name, payload),
+              (std::string("analyzer weak fixture writes ") + test_case.name).c_str());
+    }
+
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw([&] { report = analysis::analyze_directory(fixture.root, error); },
+                         "analyzer weak-extension scan does not throw");
+    check(!error && report.entries.size() == cases.size(),
+          "analyzer weak-extension scan succeeds with all four entries");
+    check(analysis_entries_sorted(report),
+          "analyzer weak-extension entries are sorted by relative path");
+
+    for (const WeakCase& test_case : cases) {
+        const analysis::AnalysisEntry* entry = analysis_find_entry(report, test_case.name);
+        const std::string prefix = std::string("analyzer weak ") + test_case.name;
+        check(entry != nullptr, (prefix + ": entry is present").c_str());
+        if (entry == nullptr)
+            continue;
+
+        check(entry->status == analysis::DetectionStatus::Indicator &&
+                  entry->file_type == test_case.file_type,
+              (prefix + ": status is indicator with the expected weak file_type").c_str());
+        check(analysis_vector_contains(entry->platform_indicators, test_case.indicator) &&
+                  analysis_vector_contains(entry->uncertainties, test_case.uncertainty),
+              (prefix + ": weak indicator has explicit unknown/false-positive uncertainty").c_str());
+        check(!analysis_has_false_platform_claim(*entry) &&
+                  !analysis_vector_contains(entry->uncertainties, "confirmed Xbox format"),
+              (prefix + ": makes no confirmed Xbox format claim").c_str());
+    }
+
+    analysis_cleanup_fixture(fixture);
+}
+
+void test_analysis_malformed_inputs_no_false_classification() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("malformed");
+    check(fixture.ok, "analyzer malformed fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    std::vector<std::uint8_t> bare_mz{'M', 'Z'};
+
+    // A short prefix with a non-PE signature: the signature cannot be trusted
+    // and the e_lfanew window is incomplete.
+    std::vector<std::uint8_t> bad_signature(0x90U, std::uint8_t{0U});
+    bad_signature[0U] = static_cast<std::uint8_t>('M');
+    bad_signature[1U] = static_cast<std::uint8_t>('Z');
+    analysis_put_u32(bad_signature, 0x3CU, analysis_pe_offset);
+    analysis_put_ascii(bad_signature, analysis_pe_offset, "PX");
+
+    std::vector<std::uint8_t> oversized_lfanew(0x100U, std::uint8_t{0U});
+    oversized_lfanew[0U] = static_cast<std::uint8_t>('M');
+    oversized_lfanew[1U] = static_cast<std::uint8_t>('Z');
+    analysis_put_u32(oversized_lfanew, 0x3CU, 0xFFFFFFF0U);
+
+    const auto make_truncated_optional = [](std::uint16_t section_count) {
+        std::vector<std::uint8_t> bytes(0xD8U, std::uint8_t{0U});
+        bytes[0U] = static_cast<std::uint8_t>('M');
+        bytes[1U] = static_cast<std::uint8_t>('Z');
+        analysis_put_u32(bytes, 0x3CU, analysis_pe_offset);
+        const std::size_t coff = static_cast<std::size_t>(analysis_pe_offset) + 4U;
+        bytes[analysis_pe_offset] = static_cast<std::uint8_t>('P');
+        bytes[analysis_pe_offset + 1U] = static_cast<std::uint8_t>('E');
+        analysis_put_u16(bytes, coff, 0x014CU);
+        analysis_put_u16(bytes, coff + 2U, section_count);
+        analysis_put_u16(bytes, coff + 16U, analysis_optional_size);
+        analysis_put_u16(bytes, coff + 20U, 0x010BU);
+        return bytes;
+    };
+
+    struct MalformedCase {
+        const char* name;
+        std::vector<std::uint8_t> bytes;
+        const char* uncertainty;
+    };
+    std::vector<MalformedCase> cases;
+    cases.push_back({"bare_mz.bin", bare_mz, "DOS header truncated"});
+    cases.push_back({"bad_signature.bin", bad_signature, "PE header offset e_lfanew"});
+    cases.push_back({"oversized_lfanew.bin", oversized_lfanew, "PE header offset e_lfanew"});
+    cases.push_back({"truncated_optional.bin", make_truncated_optional(1U),
+                     "optional header is truncated"});
+    cases.push_back({"excessive_sections.bin", make_truncated_optional(200U),
+                     "NumberOfSections exceeds 96"});
+
+    for (const MalformedCase& test_case : cases) {
+        check(analysis_write_file(fixture.root / test_case.name, test_case.bytes),
+              (std::string("analyzer malformed fixture writes ") + test_case.name).c_str());
+    }
+
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw([&] { report = analysis::analyze_directory(fixture.root, error); },
+                         "analyzer malformed scan does not throw");
+    check(!error && report.entries.size() == cases.size(),
+          "analyzer malformed scan succeeds with all five entries");
+
+    for (const MalformedCase& test_case : cases) {
+        const analysis::AnalysisEntry* entry = analysis_find_entry(report, test_case.name);
+        const std::string prefix = std::string("analyzer malformed ") + test_case.name;
+        check(entry != nullptr, (prefix + ": entry is present").c_str());
+        if (entry == nullptr)
+            continue;
+
+        check(entry->status == analysis::DetectionStatus::Unknown &&
+                  analysis::status_name(entry->status) == "unknown",
+              (prefix + ": status is unknown").c_str());
+        check(!entry->uncertainties.empty() &&
+                  analysis_vector_contains(entry->uncertainties, test_case.uncertainty),
+              (prefix + ": expected uncertainty is recorded").c_str());
+        check(entry->platform_indicators.empty() && entry->imports.empty() &&
+                  entry->exports.empty() && entry->relocation_types.empty() &&
+                  entry->debug_types.empty() && entry->resource_kinds.empty() &&
+                  !analysis_has_false_platform_claim(*entry),
+              (prefix + ": no partial false classification or fabricated metadata").c_str());
+    }
+
+    analysis_cleanup_fixture(fixture);
+}
+
+void test_analysis_non_date_timestamps() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("timestamps");
+    check(fixture.ok, "analyzer timestamp fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    check(analysis_write_file(fixture.root / "ts_zero.bin", analysis_make_pe32plus_x64(0U)) &&
+              analysis_write_file(fixture.root / "ts_max.bin",
+                                  analysis_make_pe32plus_x64(0xFFFFFFFFU)),
+          "analyzer timestamp fixture writes synthetic zero and max timestamps");
+
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw([&] { report = analysis::analyze_directory(fixture.root, error); },
+                         "analyzer timestamp scan does not throw");
+    check(!error && report.entries.size() == 2U,
+          "analyzer timestamp scan succeeds with both entries");
+
+    const analysis::AnalysisEntry* zero = analysis_find_entry(report, "ts_zero.bin");
+    const analysis::AnalysisEntry* maximum = analysis_find_entry(report, "ts_max.bin");
+    check(zero != nullptr && maximum != nullptr,
+          "analyzer timestamp entries are found by relative path");
+    if (zero == nullptr || maximum == nullptr) {
+        analysis_cleanup_fixture(fixture);
+        return;
+    }
+
+    check(analysis_vector_has_exact(
+              zero->pe_fields,
+              "time_date_stamp=0x00000000 (not a date; placeholder or reproducibility value)") &&
+              analysis_vector_contains(
+                  zero->uncertainties,
+                  "TimeDateStamp is 0 or 0xFFFFFFFF; it is not a date and not a build date"),
+          "timestamp zero is reported as a placeholder, not a date");
+    check(analysis_vector_has_exact(
+              maximum->pe_fields,
+              "time_date_stamp=0xffffffff (not a date; placeholder or reproducibility value)") &&
+              analysis_vector_contains(
+                  maximum->uncertainties,
+                  "TimeDateStamp is 0 or 0xFFFFFFFF; it is not a date and not a build date"),
+          "timestamp 0xFFFFFFFF is reported as a placeholder, not a date");
+    check(!analysis_text_contains(zero->timestamp, "1970") &&
+              !analysis_text_contains(maximum->timestamp, "2106") &&
+              analysis_text_contains(zero->timestamp, "not a date") &&
+              analysis_text_contains(maximum->timestamp, "not a date"),
+          "analyzer fabricates no Unix-style build date from special timestamps");
+
+    analysis_cleanup_fixture(fixture);
+}
+
+void test_analysis_report_json_fields_escaping_and_determinism() {
+    using namespace xbridge;
+
+    check(analysis::status_name(analysis::DetectionStatus::Confirmed) == "confirmed" &&
+              analysis::status_name(analysis::DetectionStatus::Indicator) == "indicator" &&
+              analysis::status_name(analysis::DetectionStatus::Unknown) == "unknown" &&
+              analysis::status_name(analysis::DetectionStatus::NotApplicable) == "not_applicable",
+          "status_name maps every DetectionStatus to its documented label");
+
+    const std::string tricky = "q\" b\\ t\t n\n c\x01";
+    analysis::AnalysisReport report;
+    report.source_directory = tricky;
+    report.notes.push_back(tricky);
+    report.notes.emplace_back("plain note");
+
+    analysis::AnalysisEntry entry;
+    entry.relative_path = tricky;
+    entry.size_bytes = 12345U;
+    entry.file_type = "json_fixture";
+    entry.architecture = "no_platform_claim";
+    entry.platform_indicators.push_back(tricky);
+    entry.pe_fields.push_back(tricky);
+    entry.imports.push_back(tricky);
+    entry.exports.push_back(tricky);
+    entry.relocation_types.push_back(tricky);
+    entry.debug_types.push_back(tricky);
+    entry.dependencies.push_back(tricky);
+    entry.resource_kinds.push_back(tricky);
+    entry.timestamp = tricky;
+    entry.uncertainties.push_back(tricky);
+    entry.component_mapping.push_back(tricky);
+    entry.status = analysis::DetectionStatus::Indicator;
+    report.entries.push_back(entry);
+
+    const std::string json = report.to_json();
+    const std::array<std::string_view, 18U> keys{{
+        "source_directory", "notes", "relative_path", "size_bytes", "file_type",
+        "architecture", "platform_indicators", "pe_fields", "imports", "exports",
+        "relocation_types", "debug_types", "dependencies", "resource_kinds", "timestamp",
+        "uncertainties", "component_mapping", "status"}};
+    for (const std::string_view key : keys) {
+        const std::string needle = "\"" + std::string(key) + "\"";
+        check(analysis_text_contains(json, needle),
+              ("analyzer JSON contains field " + std::string(key)).c_str());
+    }
+    check(analysis_text_contains(json, "\"size_bytes\": 12345"),
+          "analyzer JSON writes size_bytes as a numeric field");
+    check(analysis_text_contains(json, "\"status\": \"indicator\""),
+          "analyzer JSON writes the status label");
+
+    const std::string escaped = "q\\\" b\\\\ t\\t n\\n c\\u0001";
+    check(analysis_text_contains(json, escaped),
+          "analyzer JSON escapes quotes, backslashes, tabs, newlines and control characters");
+    check(json == report.to_json(),
+          "analyzer JSON is byte-identical on repeated calls");
+}
+
+void test_analysis_invalid_directory_error_code() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("invalid_dir");
+    check(fixture.ok, "analyzer invalid-directory fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    const std::filesystem::path missing = fixture.root / "does_not_exist";
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw([&] { report = analysis::analyze_directory(missing, error); },
+                         "analyzer nonexistent directory does not throw");
+    check(error && report.entries.empty() && report.notes.empty(),
+          "analyzer nonexistent directory sets error_code and yields an empty report");
+
+    const std::u8string u8_path = missing.u8string();
+    const std::string expected_source(reinterpret_cast<const char*>(u8_path.data()),
+                                      u8_path.size());
+    check(report.source_directory == expected_source,
+          "analyzer empty report preserves the requested source directory");
+
+    const std::filesystem::path regular_file = fixture.root / "regular.bin";
+    check(analysis_write_file(regular_file, analysis_bytes_from_text("not a directory")),
+          "analyzer invalid-directory fixture writes a regular file");
+    error.clear();
+    report = analysis::AnalysisReport{};
+    check_does_not_throw([&] { report = analysis::analyze_directory(regular_file, error); },
+                         "analyzer regular-file path does not throw");
+    check(error && report.entries.empty(),
+          "analyzer regular-file path sets error_code and yields an empty report");
+
+    analysis_cleanup_fixture(fixture);
+}
+
+void test_analysis_max_scan_bytes_truncation() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("scan_cap");
+    check(fixture.ok, "analyzer scan-cap fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    check(analysis_write_file(fixture.root / "capped.bin",
+                              analysis_make_pe32plus_x64(0x5F5E0FF0U)),
+          "analyzer scan-cap fixture writes a synthetic PE image");
+
+    analysis::AnalysisOptions options;
+    options.max_scan_bytes = 0x100U;
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw(
+        [&] { report = analysis::analyze_directory(fixture.root, options, error); },
+        "analyzer capped scan does not throw");
+    const analysis::AnalysisEntry* entry = analysis_find_entry(report, "capped.bin");
+    check(!error && entry != nullptr, "analyzer capped scan succeeds with one entry");
+    if (entry != nullptr) {
+        check(analysis_vector_contains(
+                  entry->uncertainties,
+                  "file exceeds max_scan_bytes; only a prefix was inspected") &&
+                  entry->status == analysis::DetectionStatus::Unknown,
+              "max_scan_bytes truncation is reported in uncertainties with unknown status");
+    }
+
+    options.max_scan_bytes = 0U;
+    error.clear();
+    report = analysis::AnalysisReport{};
+    check_does_not_throw(
+        [&] { report = analysis::analyze_directory(fixture.root, options, error); },
+        "analyzer zero-byte scan cap does not throw");
+    const analysis::AnalysisEntry* zero_entry = analysis_find_entry(report, "capped.bin");
+    check(!error && zero_entry != nullptr && zero_entry->file_type == "unknown" &&
+              analysis_vector_contains(
+                  zero_entry->uncertainties,
+                  "max_scan_bytes is zero; no file content was inspected") &&
+              zero_entry->status == analysis::DetectionStatus::Unknown,
+          "zero max_scan_bytes reports that no content was inspected");
+
+    analysis_cleanup_fixture(fixture);
+}
+
+void test_analysis_read_only_behavior() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("read_only");
+    check(fixture.ok, "analyzer read-only fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    const std::array<std::filesystem::path, 3U> paths{{
+        fixture.root / "synthetic.bin",
+        fixture.root / "MicrosoftGame.config",
+        fixture.root / "texture.dds"}};
+    const std::array<std::vector<std::uint8_t>, 3U> contents{{
+        analysis_make_pe32plus_x64(0x5F5E0FF0U),
+        analysis_bytes_from_text("<Game TargetDeviceFamily=\"Scarlett\" Architecture=\"x64\" />"),
+        analysis_bytes_from_text("synthetic dds payload")}};
+
+    std::vector<AnalysisFileSnapshot> before;
+    for (std::size_t index = 0U; index < paths.size(); ++index) {
+        check(analysis_write_file(paths[index], contents[index]),
+              ("analyzer read-only fixture writes " + paths[index].filename().string()).c_str());
+        before.push_back(analysis_snapshot_file(paths[index]));
+    }
+    check(std::all_of(before.begin(), before.end(),
+                      [](const AnalysisFileSnapshot& snapshot) { return snapshot.ok; }),
+          "analyzer read-only fixture snapshots size, mtime and bytes before the scan");
+
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw([&] { report = analysis::analyze_directory(fixture.root, error); },
+                         "analyzer read-only scan does not throw");
+    check(!error && report.entries.size() == paths.size(),
+          "analyzer read-only scan succeeds with all entries");
+
+    for (std::size_t index = 0U; index < paths.size(); ++index) {
+        const AnalysisFileSnapshot after = analysis_snapshot_file(paths[index]);
+        const std::string label = paths[index].filename().string();
+        check(after.ok && after.size == before[index].size &&
+                  after.modified == before[index].modified &&
+                  after.bytes == before[index].bytes,
+              ("analyzer left " + label + " size, mtime and bytes unchanged").c_str());
+    }
+    check(analysis_vector_contains(report.notes, "source files were not modified"),
+          "analyzer report explicitly notes that source files were not modified");
+
+    analysis_cleanup_fixture(fixture);
+}
+
+void test_analysis_deterministic_entry_order() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("ordering");
+    check(fixture.ok, "analyzer ordering fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    const std::vector<std::uint8_t> payload = analysis_bytes_from_text("synthetic ordering payload");
+    check(analysis_write_file(fixture.root / "z_last.dds", payload) &&
+              analysis_write_file(fixture.root / "a_first.shader", payload) &&
+              analysis_write_file(fixture.root / "m_middle.bin", payload),
+          "analyzer ordering fixture writes files in reverse lexical order");
+
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw([&] { report = analysis::analyze_directory(fixture.root, error); },
+                         "analyzer ordering scan does not throw");
+    check(!error && report.entries.size() == 3U,
+          "analyzer ordering scan succeeds with three entries");
+    check(analysis_entries_sorted(report),
+          "analyzer entries are sorted by relative path");
+    check(report.entries[0U].relative_path == "a_first.shader" &&
+              report.entries[1U].relative_path == "m_middle.bin" &&
+              report.entries[2U].relative_path == "z_last.dds",
+          "analyzer entry order is exactly lexical by relative path");
+
+    analysis_cleanup_fixture(fixture);
+}
+
+void test_analysis_resource_name_odd_max_string_bytes_regression() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("odd_resource_cap");
+    check(fixture.ok, "analyzer odd resource-cap fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    constexpr std::uint32_t extra_unit_name_rva = 0x1800U;
+    // Section raw data ends at RVA 0x2000; this leaves exactly 255 bytes from
+    // the name RVA to the mapped extent boundary with max_string_bytes = 255.
+    constexpr std::uint32_t boundary_name_rva = 0x1F01U;
+    constexpr std::uint16_t declared_units = 128U;
+    const std::string in_cap(127U, 'A');
+
+    check(analysis_write_file(fixture.root / "odd_cap_extra.bin",
+                              analysis_make_pe32plus_named_resource(
+                                  extra_unit_name_rva, declared_units, in_cap, 'Z')) &&
+              analysis_write_file(fixture.root / "odd_cap_boundary.bin",
+                                  analysis_make_pe32plus_named_resource(
+                                      boundary_name_rva, declared_units, in_cap, 'Z')),
+          "analyzer odd resource-cap fixture writes two synthetic PE32+ images");
+
+    analysis::AnalysisOptions options;
+    options.max_string_bytes = 255U;
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw(
+        [&] { report = analysis::analyze_directory(fixture.root, options, error); },
+        "analyzer odd resource-cap scan does not throw");
+    check(!error && report.entries.size() == 2U,
+          "analyzer odd resource-cap scan succeeds with exactly two entries");
+
+    const analysis::AnalysisEntry* extra =
+        analysis_find_entry(report, "odd_cap_extra.bin");
+    const analysis::AnalysisEntry* boundary =
+        analysis_find_entry(report, "odd_cap_boundary.bin");
+    check(extra != nullptr && boundary != nullptr,
+          "analyzer odd resource-cap entries are found by relative path");
+    if (extra == nullptr || boundary == nullptr) {
+        analysis_cleanup_fixture(fixture);
+        return;
+    }
+
+    const std::string expected_kind = "resource_type=name:" + in_cap;
+    check(!extra->resource_kinds.empty() &&
+              analysis_vector_has_exact(extra->resource_kinds, expected_kind),
+          "odd string cap decodes exactly 127 printable units, stopping before the extra unit");
+    for (const std::string& kind : extra->resource_kinds) {
+        const std::string message =
+            "odd string cap resource kind excludes the post-cap printable unit: " + kind;
+        check(!analysis_text_contains(kind, "Z"), message.c_str());
+    }
+
+    check(analysis_vector_contains(boundary->uncertainties,
+                                   "resource type name is unreadable") &&
+              !boundary->uncertainties.empty(),
+          "scanned prefix ending exactly at the odd cap records a truncation/limit uncertainty");
+    check(!analysis_vector_contains(boundary->resource_kinds, "resource_type=name:"),
+          "scanned prefix ending exactly at the odd cap fabricates no resource type name");
+
+    check(extra->status == analysis::DetectionStatus::Indicator &&
+              boundary->status == analysis::DetectionStatus::Indicator &&
+              analysis::status_name(extra->status) == "indicator" &&
+              analysis::status_name(boundary->status) == "indicator" &&
+              !analysis_has_affirmative_windows_claim(extra->uncertainties) &&
+              !analysis_has_affirmative_windows_claim(boundary->uncertainties),
+          "odd resource-cap entries remain indicators and make no confirmed claim");
+
+    analysis_cleanup_fixture(fixture);
+}
+
+void test_analysis_dll_characteristics_exact_output_regression() {
+    using namespace xbridge;
+
+    AnalysisFixture fixture = analysis_make_fixture("dll_characteristics");
+    check(fixture.ok, "analyzer DLL-characteristics fixture creates a unique temporary directory");
+    if (!fixture.ok)
+        return;
+
+    check(analysis_write_file(fixture.root / "dll_chars.bin",
+                              analysis_make_pe32plus_x64(0x5F5E0FF0U)),
+          "analyzer DLL-characteristics fixture writes a synthetic PE32+ image");
+
+    std::error_code error;
+    analysis::AnalysisReport report;
+    check_does_not_throw([&] { report = analysis::analyze_directory(fixture.root, error); },
+                         "analyzer DLL-characteristics scan does not throw");
+    check(!error && report.entries.size() == 1U,
+          "analyzer DLL-characteristics scan succeeds with exactly one entry");
+    const analysis::AnalysisEntry* entry = analysis_find_entry(report, "dll_chars.bin");
+    check(entry != nullptr, "analyzer DLL-characteristics entry is found by relative path");
+    if (entry == nullptr) {
+        analysis_cleanup_fixture(fixture);
+        return;
+    }
+
+    const std::string expected =
+        "dll_characteristics=0x0060[HIGH_ENTROPY_VA,DYNAMIC_BASE]";
+    check(analysis_vector_has_exact(entry->pe_fields, expected),
+          "DLL-characteristics field is byte-for-byte the authorized output format");
+    check(!analysis_vector_has_exact(
+              entry->pe_fields, "dll_characteristics=0x0060 [HIGH_ENTROPY_VA,DYNAMIC_BASE]"),
+          "spaced separator variant is rejected by the exact field assertion");
+
+    check(entry->status == analysis::DetectionStatus::Indicator &&
+              analysis::status_name(entry->status) == "indicator",
+          "DLL-characteristics PE remains an indicator, not a confirmed claim");
+    check(!analysis_has_affirmative_windows_claim(entry->pe_fields) &&
+              !analysis_has_affirmative_windows_claim(entry->platform_indicators) &&
+              !analysis_has_affirmative_windows_claim(entry->uncertainties),
+          "DLL-characteristics output introduces no Windows-compatibility claim");
+
+    analysis_cleanup_fixture(fixture);
+}
+
 }
 
 int main() {
@@ -3263,6 +5212,31 @@ int main() {
     test_guest_address_space_permissions_and_fetch();
     test_guest_address_space_device_dispatch();
     test_guest_address_space_atomicity_and_boundaries();
+
+    test_x64_step_at_rip_via_execute_only_above_4gib();
+    test_x64_execute_instruction_via_data_above_4gib_little_endian();
+    test_x64_via_execute_permission_denied_at_mapping_and_region();
+    test_x64_via_data_permission_denied_no_partial_write();
+    test_x64_via_invalid_addresses_no_truncation();
+    test_x64_step_at_rip_via_bounded_fetch_retry();
+    test_x64_via_memory_fault_propagation();
+    test_x64_virtual_memory_short_completion_failure();
+    test_x64_execute_instruction_via_legacy_parity();
+    test_x64_step_instruction_via_legacy_parity();
+    test_x64_step_at_rip_via_legacy_parity();
+
+    test_analysis_valid_pe32plus_x64_synthetic();
+    test_analysis_gdk_manifest_indicators();
+    test_analysis_weak_extension_indicators();
+    test_analysis_malformed_inputs_no_false_classification();
+    test_analysis_non_date_timestamps();
+    test_analysis_report_json_fields_escaping_and_determinism();
+    test_analysis_invalid_directory_error_code();
+    test_analysis_max_scan_bytes_truncation();
+    test_analysis_read_only_behavior();
+    test_analysis_deterministic_entry_order();
+    test_analysis_resource_name_odd_max_string_bytes_regression();
+    test_analysis_dll_characteristics_exact_output_regression();
 
     host::HostCapabilities capable_host{};
     capable_host.logical_threads = 16;

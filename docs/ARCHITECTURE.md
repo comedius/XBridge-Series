@@ -182,6 +182,10 @@ Der Interpreter ist die Referenzimplementierung (kein JIT).
 - Kein JIT.
 - Es werden keine Exceptions für unbekannte Opcodes geworfen.
 
+### Address-space seam (additive, reviewed)
+
+`documented` — The interpreter additionally exposes non-owning `_via` entry points (`execute_instruction_via`, `step_x64_instruction_via`, `step_x64_at_rip_via`) through `IGuestVirtualMemory` / `GuestAddressSpaceView` / `GuestMemoryView`. These preserve every existing signature and `X64ExecuteStatus`; memory failures still map to `MemoryAccessError`, with the originating `MemoryResult` retained in `X64ExecutionResult`. Fetch is bounded to 15 bytes, guest addresses are not narrowed, and the interface is generic — it does not model Xbox virtual memory. `TestCpu`, `GuestMemory`, `ExecutionPolicy`, CMake and presets are unchanged; ADR-0012 remains open. Design, acceptance matrix and reviewer evidence are in `docs/architecture/CPU_ADDRESS_SPACE_INTEGRATION.md` and `docs/AGENT_TASKS.md` (`XB-NEXT-DEVELOPMENT-02-C/D`). No JIT or device dispatch was added.
+
 ### TestCpu state and execution contract
 
 `TestCpu` is a synthetic test ISA, not an Xbox or x86-64 CPU. `load_program()`
