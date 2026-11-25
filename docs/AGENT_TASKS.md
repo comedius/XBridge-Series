@@ -2849,7 +2849,9 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
+
+`observed` — publication bookkeeping added after the reviewer `PASS`: `git commit -m "feat(agents): enable scoped GitHub CLI inspection"` → `[main b9044e1] feat(agents): enable scoped GitHub CLI inspection`, `3 files changed, 77 insertions(+)`; `git push` → `To https://github.com/comedius/XBridge-Series.git` / `f753f54..b9044e1  main -> main`. Full hash `b9044e166192036ab2894fb433d3fe49fb8b19b6` (`git rev-parse HEAD`); `PUBLICATION_STATUS: published` is set on the authoritative final YAML block only after this confirmed push. The earlier YAML block in this section is a pre-review snapshot and remains unchanged. No merge, tag, PR, history operation, build or CTest was performed.
