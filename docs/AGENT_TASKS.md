@@ -3015,7 +3015,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3051,7 +3051,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3085,7 +3085,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3115,6 +3115,8 @@ OWNER_APPROVALS:   No owner decision; reviewer findings are technical contract g
 
 `observed` — independent reviewer re-check verdict `PASS`: `REV-CD-01`, `REV-CD-02` and `REV-CD-03` all objectively closed with file:line evidence. New findings `0`; `ACTIONABLE 0`, `OWNER_DECISION 0`, `NON_BLOCKING 0`, `UNKNOWN 0`; severity counts `HIGH 0`, `MEDIUM 0`, `LOW 0`. Case A applies; no second correction round is required. The reviewer confirmed exact write sets, preserved protected interfaces and tests, valid correction YAML, and honest `unknown` numeric exits. C, D, C-C1 and D-C1 are technically complete pending coordinator publication.
 
+`observed` — publication of C/D/C-C1/D-C1/E: `git diff --check; "DIFF_CHECK_EXIT=$LASTEXITCODE"` → `DIFF_CHECK_EXIT=0`; `git add` of exactly `CMakeLists.txt`, five new headers under `include/xbridge/memory/`, two new sources under `src/memory/`, `tests/test_main.cpp`, `docs/AGENT_TASKS.md`, `docs/DEVELOPMENT_ENVIRONMENT.md` and `docs/ROADMAP.md` → `ADD_EXIT=0`; `git commit -m "feat(memory): add guest address space foundation"` → `[main 724a590] feat(memory): add guest address space foundation`, `12 files changed, 2169 insertions(+), 20 deletions(-)`, `COMMIT_EXIT=0`; `git push` → `04ed98e..724a590  main -> main`, `PUSH_EXIT=0`. `git rev-parse HEAD` → `724a590c20748d133e40374e9d8e625f663d6632`; `git status --porcelain=v1 --untracked-files=all` → no output immediately after push. No PR mutation, history rewrite, forced push or destructive command was used.
+
 ```yaml
 PACKAGE_ID: XB-NEXT-DEVELOPMENT-01-D-C1
 PARENT_ID: XB-NEXT-DEVELOPMENT-01-D
@@ -3123,7 +3125,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
@@ -3169,7 +3171,7 @@ STATUS: pass
 IMPLEMENTATION_STATE: done
 REVIEW_STATUS: PASS
 CONFORMANCE_STATUS: not_assessed
-PUBLICATION_STATUS: local_only
+PUBLICATION_STATUS: published
 BLOCKER_OWNER_DECISION: none
 PROGRESS_UNITS: N/A
 ```
