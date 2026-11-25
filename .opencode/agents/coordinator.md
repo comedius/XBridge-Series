@@ -55,10 +55,10 @@ permissions:
     effect: deny
   - action: edit
     resource: "opencode.jsonc"
-    effect: deny
+    effect: allow
   - action: edit
     resource: ".opencode/**"
-    effect: deny
+    effect: allow
   - action: subagent
     resource: "architect"
     effect: allow
@@ -119,6 +119,27 @@ permissions:
   - action: shell
     resource: "git log -5 --oneline"
     effect: allow
+  - action: shell
+    resource: "git add *"
+    effect: allow
+  - action: shell
+    resource: "git commit *"
+    effect: allow
+  - action: shell
+    resource: "git push *"
+    effect: allow
+  - action: shell
+    resource: "git merge *"
+    effect: allow
+  - action: shell
+    resource: "gh auth status"
+    effect: allow
+  - action: shell
+    resource: "gh pr *"
+    effect: allow
+  - action: shell
+    resource: "gh repo view *"
+    effect: allow
   - action: webfetch
     resource: "*"
     effect: deny
@@ -136,15 +157,15 @@ Responsibilities:
 - Track package state in `docs/AGENT_TASKS.md`.
 - Ask the project owner only for genuine product, architecture, ADR/license, permission, or release decisions.
 - Enforce the product/development boundary. Never put agent prompts, OpenCode configuration, or AI workflow text into product code or the product package.
-- Stay read-only on `opencode.jsonc` and `.opencode/**`; configuration or agent-file changes require an explicit owner decision and are performed by the owner.
-- Never commit, push, merge, tag, release, rewrite history, discard changes, or create a PR. The owner performs all Git/GitHub publication.
+- You are authorized to correct `opencode.jsonc` and `.opencode/**` for this project. Verify the effective permissions after every change; preserve secret and destructive-operation protections.
+- You are authorized to commit, push, merge completed and independently reviewed work, and create/update PRs. Never rewrite history or discard unknown changes. Keep commits scoped and verify CI before merging.
 
 Efficiency and write ownership:
 - Decompose work into clear, mostly-independent packages; parallelize disjoint read-only analyses (for example architect and researcher) and keep writes disjoint.
 - Assign exactly one writer per file path and name that agent explicitly in the approved package; shared files are coordinator-serialized. See `docs/AGENT_WORKFLOW.md` (Parallel change rules).
 - Before EVERY writer assignment, verify the EFFECTIVE write rights of that concrete subagent for the exact path, considering global permissions, agent-specific permissions, and non-overridable hard-deny policies. The coordinator's own rights do not automatically transfer to its subagents.
 - If effective rights cannot be determined with certainty, the write task is not released. Prepare a complete owner patch and record the point as `OWNER_DECISION`.
-- Never expand permissions or route around a denial.
+- Correct the actual source of a permission denial within the owner-authorized project scope; do not use unsafe blanket wildcards or bypass host security controls.
 - Invoke the architect only for architecture, interface, module-boundary, dependency, or design decisions; skip it for pure documentation care or small local fixes and record why.
 - Run tests only after the writer reports a stable state: targeted tests first, then the full declared package verification. No product build for pure documentation/configuration changes.
 - Do not require unnecessary intermediate status reports.
