@@ -51,7 +51,9 @@ Define a backend-neutral host graphics interface. Research and implement backend
 
 Never assume PC Direct3D 12 is equivalent to Xbox-specific graphics interfaces. Backend selection must be capability-based, not based only on GPU brand or model.
 
-## Non-goals for 0.1.0
+## Original 0.1.0 milestone exclusions (historical baseline)
+
+The exclusions below describe the project's original 0.1.0 milestone scope. They are historical baseline statements, not a declaration that the repository's current CMake project version is 0.1.0. The current CMake project version is 0.3.0. Any change to these scope exclusions requires an explicit architecture decision and must not be inferred from the version number.
 
 - Executing Xbox executables.
 - Loading Xbox firmware or keys.
@@ -184,7 +186,7 @@ Der Interpreter ist die Referenzimplementierung (kein JIT).
 
 ### Address-space seam (additive, reviewed)
 
-`documented` — The interpreter additionally exposes non-owning `_via` entry points (`execute_instruction_via`, `step_x64_instruction_via`, `step_x64_at_rip_via`) through `IGuestVirtualMemory` / `GuestAddressSpaceView` / `GuestMemoryView`. These preserve every existing signature and `X64ExecuteStatus`; memory failures still map to `MemoryAccessError`, with the originating `MemoryResult` retained in `X64ExecutionResult`. Fetch is bounded to 15 bytes, guest addresses are not narrowed, and the interface is generic — it does not model Xbox virtual memory. `TestCpu`, `GuestMemory`, `ExecutionPolicy`, CMake and presets are unchanged; ADR-0012 remains open. Design, acceptance matrix and reviewer evidence are in `docs/architecture/CPU_ADDRESS_SPACE_INTEGRATION.md` and `docs/AGENT_TASKS.md` (`XB-NEXT-DEVELOPMENT-02-C/D`). No JIT or device dispatch was added.
+`documented` — The interpreter additionally exposes non-owning `_via` entry points (`execute_instruction_via`, `step_x64_instruction_via`, `step_x64_at_rip_via`) through `IGuestVirtualMemory` / `GuestAddressSpaceView` / `GuestMemoryView`. These preserve every existing signature and `X64ExecuteStatus`; memory failures still map to `MemoryAccessError`, with the originating `MemoryResult` retained in `X64ExecutionResult`. Fetch is bounded to 15 bytes, guest addresses are not narrowed, and the interface is generic — it does not model Xbox virtual memory. `TestCpu`, `GuestMemory`, `ExecutionPolicy`, CMake and presets are unchanged; No ADR-0012 is currently recorded in `docs/DECISIONS.md`; references to ADR-0012 identify an unresolved decision placeholder, not an accepted decision. A new ADR and any change to the CPU execution strategy require explicit owner approval. Design, acceptance matrix and reviewer evidence are in `docs/architecture/CPU_ADDRESS_SPACE_INTEGRATION.md` and `docs/AGENT_TASKS.md` (`XB-NEXT-DEVELOPMENT-02-C/D`). No JIT or device dispatch was added.
 
 ### TestCpu state and execution contract
 
