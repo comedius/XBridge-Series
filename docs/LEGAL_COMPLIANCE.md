@@ -9,8 +9,7 @@ not determine whether a particular emulator, file, or use is lawful.
 - **Documented current state:** XBridge is an independent Windows emulator
   project targeting Xbox Series X. The current [architecture](ARCHITECTURE.md)
   identifies executing Xbox executables, loading Xbox firmware or keys, and
-  shipping or decrypting commercial game content as non-goals for version
-  0.1.0. Its `TestCpu` is a synthetic test instruction set, not an Xbox or
+  shipping or decrypting commercial game content as exclusions from the original 0.1.0 milestone scope (historical baseline; the current CMake project version is 0.3.0). Its `TestCpu` is a synthetic test instruction set, not an Xbox or
   x86-64 CPU.
 - **Planned goal:** Longer-term compatibility work may include self-developed
   homebrew and commercial Xbox Series X software, but only where technically
