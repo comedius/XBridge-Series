@@ -114,8 +114,12 @@
     { "action": "shell", "resource": "opencode mcp list*", "effect": "allow" },
     { "action": "shell", "resource": "opencode run *", "effect": "allow" },
 
-    { "action": "question", "resource": "*", "effect": "deny" },
-    { "action": "subagent", "resource": "*", "effect": "deny" },
+    { "action": "question", "resource": "*", "effect": "ask" },
+    { "action": "subagent", "resource": "architect", "effect": "allow" },
+    { "action": "subagent", "resource": "developer", "effect": "allow" },
+    { "action": "subagent", "resource": "tester", "effect": "allow" },
+    { "action": "subagent", "resource": "reviewer", "effect": "allow" },
+    { "action": "subagent", "resource": "researcher", "effect": "allow" },
     { "action": "webfetch", "resource": "*", "effect": "deny" },
     { "action": "websearch", "resource": "*", "effect": "deny" },
 
