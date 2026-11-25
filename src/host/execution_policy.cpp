@@ -92,4 +92,9 @@ ExecutionPlan select_execution_plan(const HostCapabilities& host,
     return plan;
 }
 
+ExecutionPlan select_execution_plan(const ICapabilityProvider& provider,
+                                     const ExecutionSettings& settings) {
+    return select_execution_plan(provider.capabilities(), settings);
+}
+
 } // namespace xbridge::host

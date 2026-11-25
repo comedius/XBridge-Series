@@ -131,3 +131,18 @@ At the end of every task, report:
 9. Any manual action required from the user
 
 Separate verified results from assumptions and unresolved questions.
+
+## 10. Development infrastructure vs product
+
+- OpenCode, specialized agents, prompts, KI instructions, internal automation and development tools are development infrastructure only.
+- This infrastructure stays in the private development repository and must not be copied into the product package.
+- The product package is built from an explicit allowlist; internal agent configuration, workflow documents and temporary development files are excluded.
+- Do not add AI/agent runtime behavior, API-key handling or service dependencies to product code unless explicitly approved as a product function with its own ADR and tests.
+- A `FINAL_CLEANUP` package may start only after feature-complete status and explicit owner approval. It must not delete agent configuration or documents that are still needed for maintenance.
+
+## 11. Agent system control
+
+- The coordinator is the primary agent; architect, developer, tester, reviewer and researcher are subagents.
+- Subagents do not start further subagents. The coordinator routes all hand-offs.
+- Every package must follow the envelope in `docs/AGENT_WORKFLOW.md`.
+- Agents never commit, push, merge, tag, release, rewrite history, discard changes or create pull requests. The project owner performs all publication.

@@ -69,6 +69,10 @@ Never assume PC Direct3D 12 is equivalent to Xbox-specific graphics interfaces. 
 
 Dependencies should point inward through interfaces. CPU and GPU modules may depend on memory interfaces, but must not reach into each other's private implementation.
 
+### Product vs development infrastructure boundary
+
+OpenCode configuration, specialized agents, prompts, internal automation, workflow documents and temporary development artifacts are development infrastructure. They stay in the private development repository and are excluded from the product package, which is defined later by an explicit allowlist. Product code must not depend on AI services or agent control unless a separate ADR and owner approval define that behavior as a product function. The final cleanup is a late-stage, owner-approved package; it must not remove the development infrastructure needed for post-release maintenance.
+
 ## CPU strategy
 
 The MVP's `TestCpu` is a synthetic instruction set for exercising fetch/decode/execute and memory interfaces. It is not x86-64.
@@ -161,7 +165,10 @@ Der Interpreter ist die Referenzimplementierung (kein JIT).
 **Schnittstelle**
 - Header: `include/xbridge/cpu/x64_instruction_interpreter.hpp`
 - Implementation: `src/cpu/x64_instruction_interpreter.cpp`
-- Funktion: `execute_instruction(const DecodedInstruction&, X64CpuState&, GuestMemory&) noexcept`
+- Funktionen:
+  - `execute_instruction(const DecodedInstruction&, X64CpuState&, GuestMemory&) noexcept` führt eine bereits dekodierte Instruktion aus.
+  - `step_x64_instruction(std::span<const std::uint8_t>, X64CpuState&, GuestMemory&) noexcept` dekodiert höchstens eine Instruktion aus einem expliziten Byte-Puffer und führt sie aus; Non-Ok-Dekodierungen bleiben `Ok`-No-ops mit unverändertem RIP.
+  - `step_x64_at_rip(X64CpuState&, GuestMemory&) noexcept` liest höchstens 15 Bytes ab `state.rip` aus `GuestMemory` und reicht sie an `step_x64_instruction(...)` weiter. Die 15 ist ein lokales Lese-Limit, keine RIP-relative Guest-Adressierung; kein Status-Übersetzen und kein Run-Loop.
 
 **Aktuelle Einschränkungen (Sprint 8)**
 - Keine REX-Präfixe für 8-bit Operanden (keine AH/BH/CH/DH High-Byte Register).
@@ -224,6 +231,6 @@ No `hypothesis` or `unknown` item may be treated as implemented behavior.
 
 ## Host hardware detection interface requirements
 
-A future `HostCapabilities` service should return immutable, testable facts (CPU features/core counts, memory budgets, available graphics APIs/extensions/features, device limits, driver identity, and storage information). A separate `BackendSelector` applies policy and returns the selected backend plus a human-readable decision report. Detection must not be mixed into guest CPU/GPU emulation code. Provide deterministic mock capability sets for tests.
+The repository now contains a deterministic, host-only seam: `HostCapabilities` is treated as immutable by this seam; `ICapabilityProvider` exposes it read-only; `FixedCapabilityProvider` stores a supplied set for deterministic tests; `select_execution_plan(provider, settings)` forwards to the pure `HostCapabilities` overload without platform probing or initialization. A future platform-specific detector may implement the same seam, but real OS/API probing is not implemented and remains a separate owner decision. `BackendSelector` remains a design concept; current selection is `select_execution_plan(...)`. Detection must not be mixed into guest CPU/GPU emulation code.
 
 Suggested initial profiles: `low`, `balanced`, and `high`, plus `custom`. Profiles are policy presets, not hard hardware gates. The UI/CLI must allow users to inspect and override safe settings. Automatic mode should remain the default within the hybrid design.

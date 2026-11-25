@@ -21,6 +21,33 @@ permissions:
     resource: "docs/PORTABLE_SETUP.md"
     effect: allow
   - action: edit
+    resource: "docs/DEVELOPMENT_ENVIRONMENT.md"
+    effect: allow
+  - action: edit
+    resource: "docs/AGENT_AUTONOMY.md"
+    effect: allow
+  - action: edit
+    resource: "docs/AGENT_CORE_ARCHITECTURE.md"
+    effect: allow
+  - action: edit
+    resource: "docs/OPENCODE_AUTOMATION_PLAN.md"
+    effect: allow
+  - action: edit
+    resource: "docs/AUTOMATED_QUALITY_GATES.md"
+    effect: allow
+  - action: edit
+    resource: "docs/GITHUB_AGENT_WORKFLOW.md"
+    effect: allow
+  - action: edit
+    resource: "docs/DESKTOP_MIGRATION_CHECKLIST.md"
+    effect: allow
+  - action: edit
+    resource: "docs/ARCHITECTURE.md"
+    effect: allow
+  - action: edit
+    resource: "ai/README.md"
+    effect: allow
+  - action: edit
     resource: "docs/DECISIONS.md"
     effect: deny
   - action: edit
@@ -59,6 +86,39 @@ permissions:
   - action: shell
     resource: "opencode *"
     effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "git status --porcelain=v1 --untracked-files=all"
+    effect: allow
+  - action: shell
+    resource: "git diff --cached --name-only"
+    effect: allow
+  - action: shell
+    resource: "git diff --check"
+    effect: allow
+  - action: shell
+    resource: "git rev-parse HEAD"
+    effect: allow
+  - action: shell
+    resource: "git branch --show-current"
+    effect: allow
+  - action: shell
+    resource: "git diff HEAD --no-ext-diff"
+    effect: allow
+  - action: shell
+    resource: "git diff HEAD --no-ext-diff --stat"
+    effect: allow
+  - action: shell
+    resource: "git diff HEAD --no-ext-diff --name-only"
+    effect: allow
+  - action: shell
+    resource: "git show --no-ext-diff"
+    effect: allow
+  - action: shell
+    resource: "git log -5 --oneline"
+    effect: allow
   - action: webfetch
     resource: "*"
     effect: deny

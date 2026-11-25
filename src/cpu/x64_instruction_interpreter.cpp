@@ -1,5 +1,7 @@
 #include "xbridge/cpu/x64_instruction_interpreter.hpp"
 
+#include <algorithm>
+#include <array>
 #include <limits>
 #include <stdexcept>
 
@@ -145,6 +147,45 @@ namespace xbridge::cpu {
 
     state.rip += instruction.length;
     return X64ExecuteStatus::Ok;
+}
+
+[[nodiscard]] X64ExecuteStatus step_x64_instruction(
+    std::span<const std::uint8_t> bytes,
+    X64CpuState& state,
+    memory::GuestMemory& memory) noexcept
+{
+    const auto decoded = decode_x64_instruction(bytes);
+    return execute_instruction(decoded, state, memory);
+}
+
+[[nodiscard]] X64ExecuteStatus step_x64_at_rip(
+    X64CpuState& state,
+    memory::GuestMemory& memory) noexcept
+{
+    constexpr auto fetch_capacity = std::size_t{15};
+
+    if (state.rip > static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max())) {
+        return X64ExecuteStatus::MemoryAccessError;
+    }
+
+    const auto rip_offset = static_cast<std::size_t>(state.rip);
+    if (rip_offset >= memory.size()) {
+        return X64ExecuteStatus::MemoryAccessError;
+    }
+
+    const auto count = std::min(fetch_capacity, memory.size() - rip_offset);
+    std::array<std::uint8_t, fetch_capacity> buffer{};
+
+    try {
+        const auto rip = static_cast<std::uint32_t>(state.rip);
+        for (std::size_t i = 0; i < count; ++i) {
+            buffer[i] = memory.read8(rip + static_cast<std::uint32_t>(i));
+        }
+    } catch (const std::out_of_range&) {
+        return X64ExecuteStatus::MemoryAccessError;
+    }
+
+    return step_x64_instruction(std::span<const std::uint8_t>(buffer.data(), count), state, memory);
 }
 
 } // namespace xbridge::cpu

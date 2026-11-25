@@ -17,6 +17,69 @@ permissions:
   - action: shell
     resource: "opencode *"
     effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "git status --porcelain=v1 --untracked-files=all"
+    effect: allow
+  - action: shell
+    resource: "git diff --cached --name-only"
+    effect: allow
+  - action: shell
+    resource: "git diff --check"
+    effect: allow
+  - action: shell
+    resource: "git rev-parse HEAD"
+    effect: allow
+  - action: shell
+    resource: "git branch --show-current"
+    effect: allow
+  - action: shell
+    resource: "cmake --version"
+    effect: allow
+  - action: shell
+    resource: "ctest --version"
+    effect: allow
+  - action: shell
+    resource: "cmake --preset windows-debug"
+    effect: allow
+  - action: shell
+    resource: "cmake --fresh --preset windows-debug"
+    effect: allow
+  - action: shell
+    resource: "cmake --build --preset windows-debug"
+    effect: allow
+  - action: shell
+    resource: "cmake --build --preset windows-debug --config Debug"
+    effect: allow
+  - action: shell
+    resource: "ctest --test-dir build/windows-debug -C Debug --output-on-failure"
+    effect: allow
+  - action: shell
+    resource: "ctest --test-dir \"build/windows-debug\" -C Debug --output-on-failure"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe' --version"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe' --fresh --preset windows-debug"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe' --build --preset windows-debug --config Debug"
+    effect: allow
+  - action: shell
+    resource: "& 'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\ctest.exe' --test-dir build/windows-debug -C Debug --output-on-failure"
+    effect: allow
+  - action: shell
+    resource: "cmake --preset ninja-debug"
+    effect: allow
+  - action: shell
+    resource: "cmake --build --preset ninja-debug"
+    effect: allow
+  - action: shell
+    resource: "ctest --preset ninja-debug --output-on-failure"
+    effect: allow
   - action: webfetch
     resource: "*"
     effect: deny
