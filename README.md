@@ -46,6 +46,7 @@ The repository currently defines one CTest test target, `xbridge_tests`. A succe
 ## Project documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Development infrastructure and future product packaging](docs/DEVELOPMENT_INFRASTRUCTURE_AND_PRODUCT_PACKAGING.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Architecture decisions](docs/DECISIONS.md)
 - [Research register](docs/RESEARCH_REGISTER.md)
