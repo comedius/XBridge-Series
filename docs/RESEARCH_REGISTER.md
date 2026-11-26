@@ -124,6 +124,13 @@ Objective criteria for `conformant`:
 | XB-NEXT-03-GFX | Graphics compatibility analysis and D3D12-to-D3D12 research boundary | unknown | documented (authoritative, public Windows D3D12/mesh/DXIL specifications only); documented (project-authored); observed; hypothesis; unknown | conformant | Independent reviewer verification; no D3D12.X equivalence or backend approval |
 | XB-NEXT-03-PERF | Performance measurement concept without game or native-execution claims | unknown | documented (authoritative, general Windows x64/public Windows D3D12 only); documented (project-authored); observed; hypothesis; unknown | conformant | Independent reviewer verification; no benchmark, harness or performance claim |
 | XB-NEXT-03-SYNTH | XB-NEXT-DEVELOPMENT-03-R0 synthesis and final-feasibility boundary | unknown | documented (project-authored); observed; hypothesis; unknown | conformant | Independent reviewer verification; arbitrary commercial binary feasibility remains unknown |
+| XB-NEXT-04-A | PE loader/module requirements from the supplied game-installation report | unknown | documented (project-authored); observed; hypothesis; unknown | conformant | Independent reviewer verification; no loader implementation or compatibility claim |
+| XB-NEXT-04-B | XMem and guest-memory requirements from the supplied report | unknown | documented (project-authored); observed; hypothesis; unknown | conformant | Independent reviewer verification; no Xbox memory semantics adopted |
+| XB-NEXT-04-C | x64 ABI, TLS, SEH, CRT and runtime requirements from the supplied report | unknown | documented (project-authored); observed; hypothesis; unknown | conformant | Independent reviewer verification; no guest ABI or execution claim |
+| XB-NEXT-04-D | D3D12.X, XG, FFX and BVH graphics requirements from the supplied report | unknown | documented (project-authored); observed; hypothesis; unknown | conformant | Independent reviewer verification; no D3D12.X equivalence or backend approval |
+| XB-NEXT-04-E | Bink, chad, xapu and Media Foundation audio/video requirements | unknown | documented (project-authored); observed; hypothesis; unknown | conformant | Independent reviewer verification; no codec or media behavior claim |
+| XB-NEXT-04-F | Config identity, HTTP, Winsock, input, window, crypto and registry requirements | unknown | documented (project-authored); observed; hypothesis; unknown | conformant | Independent reviewer verification; no system-service implementation claim |
+| XB-NEXT-04-G | RPF/TTPF and DStorage container/streaming requirements | unknown | documented (project-authored); observed; hypothesis; unknown | conformant | Independent reviewer verification; no container internals or decryption claim |
 
 ## 8. Entry details
 
@@ -543,13 +550,196 @@ Objective criteria for `conformant`:
 - Conformance status: conformant
 - Missing fields if non-conformant: none — all 23 fields present and non-empty or explicit N/A with reason; reviewer verification is a separate, unperformed step.
 
+### XB-NEXT-04-A
+
+- ID: XB-NEXT-04-A
+- Title: PE loader/module requirements from the supplied game-installation report
+- Package/Goal: XB-NEXT-04 — development-only gap analysis comparing supplied report facts with current repository evidence; no implementation, ADR, interface or product change authorised.
+- Research question: Which PE loader and module requirements are observable in the supplied reports, and what is the current XBridge evidence boundary for each?
+- Scope: `documented (project-authored)` — Xbox Series X target only; local report/repository reads on 2026-11-26; no proprietary asset use, execution, decryption, JIT, patching or compatibility/performance claim; general PE facts are not promoted to Xbox guest facts.
+- Capability status: unknown
+- Workflow/lifecycle status: complete evidence record; no implementation approved; independent reviewer verification not yet recorded
+- Evidence label(s): documented (project-authored); observed; hypothesis; unknown
+- Source class: project-authored; N/A (non-documented sub-claims)
+- Source: S0 `docs/AGENT_TASKS.md:4089-4103`; S1 exact local path `D:\xbox\Spiel Daten\report\report.json` (lines 2-34,109-110,229-243,404-407,458-480,745-750,814-820,874-879,930-962,965-1060,1037-1058,1787-1797); S2 exact local path `D:\xbox\Spiel Daten\report\report.md` (lines 3-15,23-28); S3 `docs/research/XB-NEXT-04_GAME_REQUIREMENTS_GAP_ANALYSIS.md:35-49`; S4 `docs/research/XB-NEXT-04_REQUIREMENTS_MATRIX.md:12,18-24`; S5 `include/xbridge/loader/pe_image.hpp:15-40,42-59,74-116`; S6 `include/xbridge/loader/executable_loader.hpp:15-17,46-52`; S7 `include/xbridge/analysis/game_intelligence.hpp:16-30,43-60`; S8 `docs/architecture/XB_NEXT_03_EXECUTION_STRATEGY_DRAFT.md:53-55`; S9 `docs/ARCHITECTURE.md:58`.
+- Date checked: 2026-11-26
+- Concrete finding(s): F1 (`observed` S1, S2): the analyzer reports 26 files, six PE entries, main PE fields/sections and signing/entropy indicators. F2 (`observed` S1, S2): `XboxBvhBuilder.dll` is reported invalid with quoted DOS-header failure. F3 (`documented (project-authored)` S3-S9): XBridge has a bounded synthetic loader, synthetic PE metadata, a read-only analyzer and a restricted relocation scope. F4 (`hypothesis` S3, S4): the report may guide future bounded-reader research; it is not executability evidence. F5 (`unknown` S1, S3, S4): `.xbld`/`.retplne`/`.voltbl` semantics, the invalid local DLL's cause and optional-header Magic remain unresolved.
+- Finding-to-source mapping: F1 → S1, S2; F2 → S1, S2; F3 → S3-S9; F4 → S3, S4; F5 → none recorded — see Uncertainties.
+- Reproduction: directly read S0-S9 on 2026-11-26 and compare the exact line ranges in Source with aliases `RPT-JSON`/`RPT-MD` in S3; no shell command, build, CTest, game run, guest execution, capability validation, commit, push, merge or publication was performed.
+- Uncertainties: `unknown` — toolchain section semantics; `unknown` — why the local `XboxBvhBuilder.dll` lacks `MZ`; `unknown` — relationship to imported `xboxbvhbuilder.dll`; `observed` — no optional-header Magic is quoted in the supplied report.
+- Open questions: What lawful evidence could establish section semantics and invalid-DLL cause without protected content? Which loader rules would require an owner-approved interface or implementation package?
+- Result/conclusion: `documented (project-authored)` — current XBridge loader evidence is synthetic-only; `observed` — the report supplies PE metadata and one invalid-PE observation; `unknown` — real loader requirements and Xbox behavior remain unresolved. No compatibility or execution claim.
+- Architecture/implementation impact: `documented (project-authored)` — none; no ADR, interface, code, test, CMake, preset, dependency or licence change; future loader work requires a separate approved envelope.
+- Dependencies: S0 package envelope; S3/S4 analysis and matrix; S5-S9 cited repository evidence. No implementation dependency started.
+- Responsible agent: researcher (XB-NEXT-04); independent reviewer verification is required and not yet recorded in this entry.
+- Created/Changed: Created 2026-11-26 by researcher (XB-NEXT-04); Changed N/A (first creation).
+- Conformance status: conformant
+- Missing fields if non-conformant: none — criteria 1-8 of `docs/RESEARCH_REGISTER.md:94-105` satisfied: unique ID; 23 non-empty fields; allowed tokens; documented source class; finding mapping; labeled uncertainties; declared scope; Source/Reproduction recorded for `unknown`; reviewer verification is a separate, unperformed step.
+
+### XB-NEXT-04-B
+
+- ID: XB-NEXT-04-B
+- Title: XMem and guest-memory requirements from the supplied report
+- Package/Goal: XB-NEXT-04 — development-only gap analysis comparing supplied report facts with current repository evidence; no implementation, ADR, interface or product change authorised.
+- Research question: Which XMem and memory requirements are observable in the supplied reports, and what is the current XBridge evidence boundary for each?
+- Scope: `documented (project-authored)` — Xbox Series X target only; local report/repository reads on 2026-11-26; no proprietary asset use, execution, decryption, JIT, patching or compatibility/performance claim; generic host/guest memory facts are not promoted to Xbox guest facts.
+- Capability status: unknown
+- Workflow/lifecycle status: complete evidence record; no implementation approved; independent reviewer verification not yet recorded
+- Evidence label(s): documented (project-authored); observed; hypothesis; unknown
+- Source class: project-authored; N/A (non-documented sub-claims)
+- Source: S0 `docs/AGENT_TASKS.md:4089-4103`; S1 exact local path `D:\xbox\Spiel Daten\report\report.json` (lines 266-269,1247-1265,1525-1534,1788-1791); S2 exact local path `D:\xbox\Spiel Daten\report\report.md` (line 54); S3 `docs/research/XB-NEXT-04_GAME_REQUIREMENTS_GAP_ANALYSIS.md:51-62`; S4 `docs/research/XB-NEXT-04_REQUIREMENTS_MATRIX.md:12,30-34`; S5 `docs/ARCHITECTURE.md:30-38,58,194-196`; S6 `include/xbridge/runtime/system_services.hpp:7-28,75-78`; S7 `docs/architecture/XB_NEXT_03_EXECUTION_STRATEGY_DRAFT.md:49`; S8 `include/xbridge/loader/executable_loader.hpp:19-22,61-62`.
+- Date checked: 2026-11-26
+- Concrete finding(s): F1 (`observed` S1, S2): the main exe imports twelve `xmem.dll` symbols and Bink imports `XMemAlloc`/`XMemFree`. F2 (`observed` S1): the main exe exports `__XMemAllocationHooks__` and imports generic virtual-memory and APU-address helpers. F3 (`documented (project-authored)` S3-S8): XBridge has generic bounded GuestMemory, a neutral VirtualMemory service ID, loader physical backing and a recorded research lead only. F4 (`hypothesis` S3, S4): generic memory seams could support future lawful study; no XMem behavior is implemented. F5 (`unknown` S1, S3, S4): signatures, page semantics, hook shape and guest-address ownership remain unresolved.
+- Finding-to-source mapping: F1 → S1, S2; F2 → S1; F3 → S3-S8; F4 → S3, S4; F5 → none recorded — see Uncertainties.
+- Reproduction: directly read S0-S8 on 2026-11-26 and compare the exact line ranges in Source with alias `RPT-JSON`/`RPT-MD` in S3; no shell command, build, CTest, game run, guest execution, capability validation, commit, push, merge or publication was performed.
+- Uncertainties: `unknown` — XMem signatures and allocation policies; `unknown` — physical-page and working-set semantics; `unknown` — guest virtual-memory layout; `observed` — XBridge GuestMemory is generic and explicitly not an Xbox VM model.
+- Open questions: Which lawful evidence could establish Xbox memory-service semantics? Which owner decision would be needed before changing the guest-memory contract?
+- Result/conclusion: `documented (project-authored)` — current XBridge memory evidence is generic/synthetic; `observed` — the report supplies XMem-related strings; `unknown` — Xbox memory capability remains unresolved. No implementation or compatibility claim.
+- Architecture/implementation impact: `documented (project-authored)` — none; no ADR, memory interface, code, test, CMake, preset, dependency or licence change; future memory work requires a separate approved envelope.
+- Dependencies: S0 package envelope; S3/S4 analysis and matrix; S5-S8 cited repository evidence. No implementation dependency started.
+- Responsible agent: researcher (XB-NEXT-04); independent reviewer verification is required and not yet recorded in this entry.
+- Created/Changed: Created 2026-11-26 by researcher (XB-NEXT-04); Changed N/A (first creation).
+- Conformance status: conformant
+- Missing fields if non-conformant: none — criteria 1-8 of `docs/RESEARCH_REGISTER.md:94-105` satisfied: unique ID; 23 non-empty fields; allowed tokens; documented source class; finding mapping; labeled uncertainties; declared scope; Source/Reproduction recorded for `unknown`; reviewer verification is a separate, unperformed step.
+
+### XB-NEXT-04-C
+
+- ID: XB-NEXT-04-C
+- Title: x64 ABI, TLS, SEH, CRT and runtime requirements from the supplied report
+- Package/Goal: XB-NEXT-04 — development-only gap analysis comparing supplied report facts with current repository evidence; no implementation, ADR, interface or product change authorised.
+- Research question: Which CPU/ABI/TLS/SEH/CRT/runtime requirements are observable in the supplied reports, and what is the current XBridge evidence boundary for each?
+- Scope: `documented (project-authored)` — Xbox Series X target only; local report/repository reads on 2026-11-26; no proprietary asset use, execution, decryption, JIT, patching or compatibility/performance claim; general x64/Windows facts are not promoted to Xbox guest facts.
+- Capability status: unknown
+- Workflow/lifecycle status: complete evidence record; no implementation approved; independent reviewer verification not yet recorded
+- Evidence label(s): documented (project-authored); observed; hypothesis; unknown
+- Source class: project-authored; N/A (non-documented sub-claims)
+- Source: S0 `docs/AGENT_TASKS.md:4089-4103`; S1 exact local path `D:\xbox\Spiel Daten\report\report.json` (lines 959,1005-1027,1063-1786,1427-1431,1576-1661,1792); S2 exact local path `D:\xbox\Spiel Daten\report\report.md` (lines 23-28); S3 `docs/research/XB-NEXT-04_GAME_REQUIREMENTS_GAP_ANALYSIS.md:64-76`; S4 `docs/research/XB-NEXT-04_REQUIREMENTS_MATRIX.md:12,40-45`; S5 `docs/ARCHITECTURE.md:89-104,106-122,150-192`; S6 `include/xbridge/execution/native_execution_backend.hpp:10-33`; S7 `docs/architecture/XB_NEXT_03_EXECUTION_STRATEGY_DRAFT.md:20-28,37-39,49`.
+- Date checked: 2026-11-26
+- Concrete finding(s): F1 (`observed` S1, S2): valid PEs report AMD64 and the main exe reports TLS, `.pdata`, CRT and unwind imports. F2 (`documented (project-authored)` S3-S7): XBridge has x64 state storage, a narrow decoder/interpreter and fixed synthetic native routines. F3 (`hypothesis` S3, S4): a lawful synthetic subset may be useful for future study; no guest execution is enabled. F4 (`unknown` S1, S3, S4, S7): guest CPUID/AVX2/BMI/FMA needs, ABI, TLS order, exceptions, syscalls and privileged-instruction behavior remain unresolved.
+- Finding-to-source mapping: F1 → S1, S2; F2 → S3-S7; F3 → S3, S4; F4 → none recorded — see Uncertainties.
+- Reproduction: directly read S0-S7 on 2026-11-26 and compare the exact line ranges in Source with alias `RPT-JSON`/`RPT-MD` in S3; no shell command, build, CTest, game run, guest execution, capability validation, commit, push, merge or publication was performed.
+- Uncertainties: `unknown` — guest CPUID/ISA requirements; `unknown` — guest calling convention and TLS callback semantics; `unknown` — exception, interrupt, syscall and privileged-instruction surface; `observed` — current native IDs are compiled-in synthetic routines only.
+- Open questions: What lawful synthetic evidence could establish ABI/TLS/SEH requirements? Which owner decision would be required before any native-path or CPU-state change?
+- Result/conclusion: `documented (project-authored)` — current XBridge CPU evidence is narrow and synthetic; `observed` — the report supplies static ABI/TLS/SEH/CRT indicators; `unknown` — guest execution capability remains unresolved. No compatibility or performance claim.
+- Architecture/implementation impact: `documented (project-authored)` — none; no ADR, CPU interface, code, test, CMake, preset, dependency or licence change; future execution work requires a separate approved envelope.
+- Dependencies: S0 package envelope; S3/S4 analysis and matrix; S5-S7 cited repository evidence. No implementation dependency started.
+- Responsible agent: researcher (XB-NEXT-04); independent reviewer verification is required and not yet recorded in this entry.
+- Created/Changed: Created 2026-11-26 by researcher (XB-NEXT-04); Changed N/A (first creation).
+- Conformance status: conformant
+- Missing fields if non-conformant: none — criteria 1-8 of `docs/RESEARCH_REGISTER.md:94-105` satisfied: unique ID; 23 non-empty fields; allowed tokens; documented source class; finding mapping; labeled uncertainties; declared scope; Source/Reproduction recorded for `unknown`; reviewer verification is a separate, unperformed step.
+
+### XB-NEXT-04-D
+
+- ID: XB-NEXT-04-D
+- Title: D3D12.X, XG, FFX and BVH graphics requirements from the supplied report
+- Package/Goal: XB-NEXT-04 — development-only gap analysis comparing supplied report facts with current repository evidence; no implementation, ADR, interface or product change authorised.
+- Research question: Which graphics requirements are observable in the supplied reports, and what is the current XBridge evidence boundary for D3D12.X, XG, FFX and BVH families?
+- Scope: `documented (project-authored)` — Xbox Series X target only; local report/repository reads on 2026-11-26; no proprietary asset use, shader extraction, execution, decryption, JIT, patching or compatibility/performance claim; public PC/Windows D3D12 facts are not promoted to Xbox D3D12.X facts.
+- Capability status: unknown
+- Workflow/lifecycle status: complete evidence record; no implementation approved; independent reviewer verification not yet recorded
+- Evidence label(s): documented (project-authored); observed; hypothesis; unknown
+- Source class: project-authored; N/A (non-documented sub-claims)
+- Source: S0 `docs/AGENT_TASKS.md:4089-4103`; S1 exact local path `D:\xbox\Spiel Daten\report\report.json` (lines 753-756,866-877,930-962,1324-1328,1452-1472); S2 exact local path `D:\xbox\Spiel Daten\report\report.md` (lines 33,42,48,51); S3 `docs/research/XB-NEXT-04_GAME_REQUIREMENTS_GAP_ANALYSIS.md:78-88`; S4 `docs/research/XB-NEXT-04_REQUIREMENTS_MATRIX.md:12,51-56`; S5 `docs/ARCHITECTURE.md:42-52,231-233`; S6 `include/xbridge/runtime/system_services.hpp:7-28,100-103`; S7 `docs/architecture/XB_NEXT_03_EXECUTION_STRATEGY_DRAFT.md:61`; S8 `include/xbridge/analysis/game_intelligence.hpp:53-60`.
+- Date checked: 2026-11-26
+- Concrete finding(s): F1 (`observed` S1, S2): the main exe imports D3D12.X, XG, FFX and mangled BVH names; the local `XboxBvhBuilder.dll` is invalid. F2 (`documented (project-authored)` S3-S8): XBridge requires separate graphics layers and keeps D3D12-to-D3D12 as a research approach only. F3 (`hypothesis` S3, S4): the strings may inform future lawful graphics research. F4 (`unknown` S1, S3, S4, S7, S8): command encoding, shader format, D3D12.X layout, BVH semantics, swizzles and rendering correctness remain unresolved.
+- Finding-to-source mapping: F1 → S1, S2; F2 → S3-S8; F3 → S3, S4; F4 → none recorded — see Uncertainties.
+- Reproduction: directly read S0-S8 on 2026-11-26 and compare the exact line ranges in Source with alias `RPT-JSON`/`RPT-MD` in S3; no shell command, build, CTest, GPU run, game run, guest execution, capability validation, commit, push, merge or publication was performed.
+- Uncertainties: `unknown` — D3D12.X equivalence and command format; `unknown` — guest shader binary format and BVH/XDXR semantics; `unknown` — local invalid-DLL relationship to imported `xboxbvhbuilder.dll`; `hypothesis` — any future mapping remains unapproved.
+- Open questions: What lawful evidence could establish guest graphics formats? Which ADR/owner decision would be required before any backend, interface or translator work?
+- Result/conclusion: `documented (project-authored)` — current XBridge graphics evidence is strategy-only; `observed` — the report supplies graphics import strings; `unknown` — graphics capability and correctness remain unresolved. No rendering, compatibility or performance claim.
+- Architecture/implementation impact: `documented (project-authored)` — none; no ADR, graphics backend, interface, code, test, CMake, preset, dependency or licence change; future graphics work requires a separate approved envelope.
+- Dependencies: S0 package envelope; S3/S4 analysis and matrix; S5-S8 cited repository evidence. No implementation dependency started.
+- Responsible agent: researcher (XB-NEXT-04); independent reviewer verification is required and not yet recorded in this entry.
+- Created/Changed: Created 2026-11-26 by researcher (XB-NEXT-04); Changed N/A (first creation).
+- Conformance status: conformant
+- Missing fields if non-conformant: none — criteria 1-8 of `docs/RESEARCH_REGISTER.md:94-105` satisfied: unique ID; 23 non-empty fields; allowed tokens; documented source class; finding mapping; labeled uncertainties; declared scope; Source/Reproduction recorded for `unknown`; reviewer verification is a separate, unperformed step.
+
+### XB-NEXT-04-E
+
+- ID: XB-NEXT-04-E
+- Title: Bink, chad, xapu and Media Foundation audio/video requirements
+- Package/Goal: XB-NEXT-04 — development-only gap analysis comparing supplied report facts with current repository evidence; no implementation, ADR, interface or product change authorised.
+- Research question: Which audio/video requirements are observable in the supplied reports, and what is the current XBridge evidence boundary for Bink, chad, xapu and Media Foundation families?
+- Scope: `documented (project-authored)` — Xbox Series X target only; local report/repository reads on 2026-11-26; no proprietary asset use, codec extraction, execution, decryption, JIT, patching or compatibility/performance claim; import names are static metadata only.
+- Capability status: unknown
+- Workflow/lifecycle status: complete evidence record; no implementation approved; independent reviewer verification not yet recorded
+- Evidence label(s): documented (project-authored); observed; hypothesis; unknown
+- Source class: project-authored; N/A (non-documented sub-claims)
+- Source: S0 `docs/AGENT_TASKS.md:4089-4103`; S1 exact local path `D:\xbox\Spiel Daten\report\report.json` (lines 297-299,351-403,1399-1408,1445-1450,1518-1559); S2 exact local path `D:\xbox\Spiel Daten\report\report.md` (lines 36,39); S3 `docs/research/XB-NEXT-04_GAME_REQUIREMENTS_GAP_ANALYSIS.md:90-103`; S4 `docs/research/XB-NEXT-04_REQUIREMENTS_MATRIX.md:12,62-66`; S5 `include/xbridge/runtime/system_services.hpp:7-28,65-68,95-98`; S6 `docs/ARCHITECTURE.md:63-69,76-77`.
+- Date checked: 2026-11-26
+- Concrete finding(s): F1 (`observed` S1, S2): the main exe imports Bink, chad, xapu and Media Foundation symbols; Bink DLL exports Bink functions and imports an XAudio2 ordinal. F2 (`documented (project-authored)` S3-S6): XBridge has neutral Audio/Thread markers and repository non-goals exclude commercial content. F3 (`hypothesis` S3, S4): these families may define future lawful research questions. F4 (`unknown` S1, S3, S4): codecs, frame buffers, DSP graphs, APU commands and media-source semantics remain unresolved.
+- Finding-to-source mapping: F1 → S1, S2; F2 → S3-S6; F3 → S3, S4; F4 → none recorded — see Uncertainties.
+- Reproduction: directly read S0-S6 on 2026-11-26 and compare the exact line ranges in Source with alias `RPT-JSON`/`RPT-MD` in S3; no shell command, build, CTest, audio/video playback, game run, guest execution, capability validation, commit, push, merge or publication was performed.
+- Uncertainties: `unknown` — codec and frame-buffer formats; `unknown` — DSP/APU command and result formats; `unknown` — XAudio2 ordinal signature and Media Foundation behavior; `observed` — no media file was executed or decoded.
+- Open questions: What lawful synthetic media evidence could establish service requirements? Which owner/legal decision would be required before any codec or content-adjacent work?
+- Result/conclusion: `documented (project-authored)` — current XBridge audio/video evidence is neutral-interface only; `observed` — the report supplies audio/video import strings; `unknown` — audio/video capability remains unresolved. No compatibility or performance claim.
+- Architecture/implementation impact: `documented (project-authored)` — none; no ADR, audio/video interface, code, test, CMake, preset, dependency or licence change; future media work requires a separate approved envelope.
+- Dependencies: S0 package envelope; S3/S4 analysis and matrix; S5/S6 cited repository evidence. No implementation dependency started.
+- Responsible agent: researcher (XB-NEXT-04); independent reviewer verification is required and not yet recorded in this entry.
+- Created/Changed: Created 2026-11-26 by researcher (XB-NEXT-04); Changed N/A (first creation).
+- Conformance status: conformant
+- Missing fields if non-conformant: none — criteria 1-8 of `docs/RESEARCH_REGISTER.md:94-105` satisfied: unique ID; 23 non-empty fields; allowed tokens; documented source class; finding mapping; labeled uncertainties; declared scope; Source/Reproduction recorded for `unknown`; reviewer verification is a separate, unperformed step.
+
+### XB-NEXT-04-F
+
+- ID: XB-NEXT-04-F
+- Title: Config identity, HTTP, Winsock, input, window, crypto and registry requirements
+- Package/Goal: XB-NEXT-04 — development-only gap analysis comparing supplied report facts with current repository evidence; no implementation, ADR, interface or product change authorised.
+- Research question: Which system/network/input requirements are observable in the supplied reports, and what is the current XBridge evidence boundary for config identity and service families?
+- Scope: `documented (project-authored)` — Xbox Series X target only; local report/repository reads on 2026-11-26; no proprietary asset use, credential handling, execution, decryption, JIT, patching or compatibility/performance claim; import names are static metadata only.
+- Capability status: unknown
+- Workflow/lifecycle status: complete evidence record; no implementation approved; independent reviewer verification not yet recorded
+- Evidence label(s): documented (project-authored); observed; hypothesis; unknown
+- Source class: project-authored; N/A (non-documented sub-claims)
+- Source: S0 `docs/AGENT_TASKS.md:4089-4103`; S1 exact local path `D:\xbox\Spiel Daten\report\report.json` (lines 137-177,591-606,608-614,1063-1079,1271-1307,1329-1374,1399-1440,1474-1512,1565-1568); S2 exact local path `D:\xbox\Spiel Daten\report\report.md` (lines 45,56-70); S3 `docs/research/XB-NEXT-04_GAME_REQUIREMENTS_GAP_ANALYSIS.md:105-118`; S4 `docs/research/XB-NEXT-04_REQUIREMENTS_MATRIX.md:12,72-80`; S5 `include/xbridge/analysis/game_intelligence.hpp:38-40`; S6 `include/xbridge/runtime/system_services.hpp:7-28,60-73,90-113`; S7 `docs/architecture/XB_NEXT_03_EXECUTION_STRATEGY_DRAFT.md:43-49`; S8 `docs/ARCHITECTURE.md:63-69`.
+- Date checked: 2026-11-26
+- Concrete finding(s): F1 (`observed` S1): `MicrosoftGame.Config` reports identity/title fields. F2 (`observed` S1, S2): the PEs import HTTP, Winsock, input, window, crypto and registry symbols. F3 (`documented (project-authored)` S3-S8): XBridge recognizes `gdk_manifest` as a string type and defines neutral service IDs without implementations. F4 (`hypothesis` S3, S4): the families may define future lawful system-service research. F5 (`unknown` S1, S3, S4, S7): service signatures, title enforcement, input protocol and network/window/crypto/registry behavior remain unresolved.
+- Finding-to-source mapping: F1 → S1; F2 → S1, S2; F3 → S3-S8; F4 → S3, S4; F5 → none recorded — see Uncertainties.
+- Reproduction: directly read S0-S8 on 2026-11-26 and compare the exact line ranges in Source with alias `RPT-JSON`/`RPT-MD` in S3; no shell command, build, CTest, network call, game run, guest execution, capability validation, commit, push, merge or publication was performed.
+- Uncertainties: `unknown` — title identity enforcement; `unknown` — HTTP/Winsock and input service semantics; `unknown` — window, crypto and registry behavior; `observed` — the analyzer's non-core DLL list is its own heuristic.
+- Open questions: What lawful evidence could establish Xbox system-service semantics? Which owner decisions would be required before network, input or security-adjacent work?
+- Result/conclusion: `documented (project-authored)` — current XBridge system evidence is neutral-interface only; `observed` — the report supplies config/static service strings; `unknown` — system-service capability remains unresolved. No compatibility or performance claim.
+- Architecture/implementation impact: `documented (project-authored)` — none; no ADR, service interface, code, test, CMake, preset, dependency or licence change; future system work requires a separate approved envelope.
+- Dependencies: S0 package envelope; S3/S4 analysis and matrix; S5-S8 cited repository evidence. No implementation dependency started.
+- Responsible agent: researcher (XB-NEXT-04); independent reviewer verification is required and not yet recorded in this entry.
+- Created/Changed: Created 2026-11-26 by researcher (XB-NEXT-04); Changed N/A (first creation).
+- Conformance status: conformant
+- Missing fields if non-conformant: none — criteria 1-8 of `docs/RESEARCH_REGISTER.md:94-105` satisfied: unique ID; 23 non-empty fields; allowed tokens; documented source class; finding mapping; labeled uncertainties; declared scope; Source/Reproduction recorded for `unknown`; reviewer verification is a separate, unperformed step.
+
+### XB-NEXT-04-G
+
+- ID: XB-NEXT-04-G
+- Title: RPF/TTPF and DStorage container/streaming requirements
+- Package/Goal: XB-NEXT-04 — development-only gap analysis comparing supplied report facts with current repository evidence; no implementation, ADR, interface or product change authorised.
+- Research question: Which container/streaming requirements are observable in the supplied reports, and what is the current XBridge evidence boundary for RPF/TTPF and DStorage families?
+- Scope: `documented (project-authored)` — Xbox Series X target only; local report/repository reads on 2026-11-26; no proprietary asset use, extraction, execution, decryption, JIT, patching or compatibility/performance claim; extension hints are not format proof.
+- Capability status: unknown
+- Workflow/lifecycle status: complete evidence record; no implementation approved; independent reviewer verification not yet recorded
+- Evidence label(s): documented (project-authored); observed; hypothesis; unknown
+- Source class: project-authored; N/A (non-documented sub-claims)
+- Source: S0 `docs/AGENT_TASKS.md:4089-4103`; S1 exact local path `D:\xbox\Spiel Daten\report\report.json` (lines 5-55,113-115,140,1465-1467); S2 exact local path `D:\xbox\Spiel Daten\report\report.md` (lines 5,9-10); S3 `docs/research/XB-NEXT-04_GAME_REQUIREMENTS_GAP_ANALYSIS.md:120-131`; S4 `docs/research/XB-NEXT-04_REQUIREMENTS_MATRIX.md:12,86-91`; S5 `include/xbridge/analysis/game_intelligence.hpp:11-13,16-30,38-40,53-60`; S6 `include/xbridge/runtime/system_services.hpp:7-28,80-88`; S7 `docs/RESEARCH_REGISTER.md:361`.
+- Date checked: 2026-11-26
+- Concrete finding(s): F1 (`observed` S1, S2): the analyzer lists `.rpf`/`.ttpf` sizes, a `containers: []` field and `DStorageGetFactory` import. F2 (`documented (project-authored)` S3-S7): XBridge's analyzer is read-only, has uncertainty fields and only a neutral Storage ID; prior register evidence leaves container internals unknown. F3 (`hypothesis` S3, S4): these facts may guide future lawful asset research. F4 (`unknown` S1, S3, S4, S7): encrypted/packed classification meaning, layouts and chunk semantics remain unresolved.
+- Finding-to-source mapping: F1 → S1, S2; F2 → S3-S7; F3 → S3, S4; F4 → none recorded — see Uncertainties.
+- Reproduction: directly read S0-S7 on 2026-11-26 and compare the exact line ranges in Source with alias `RPT-JSON`/`RPT-MD` in S3; no shell command, build, CTest, extraction, decryption, game run, guest execution, capability validation, commit, push, merge or publication was performed.
+- Uncertainties: `unknown` — `.rpf`/`.ttpf` internal layout; `unknown` — catalog and alignment semantics; `unknown` — meaning of zero encrypted/packed classification; `observed` — no container was extracted or decoded.
+- Open questions: What lawful evidence could establish container formats? Which owner/legal decision would be required before any encryption-adjacent or asset-format work?
+- Result/conclusion: `documented (project-authored)` — current XBridge container evidence is read-only/neutral only; `observed` — the report supplies extension and size metadata; `unknown` — container and streaming capability remains unresolved. No compatibility or performance claim.
+- Architecture/implementation impact: `documented (project-authored)` — none; no ADR, storage interface, code, test, CMake, preset, dependency or licence change; future asset work requires a separate approved envelope.
+- Dependencies: S0 package envelope; S3/S4 analysis and matrix; S5-S7 cited repository evidence. No implementation dependency started.
+- Responsible agent: researcher (XB-NEXT-04); independent reviewer verification is required and not yet recorded in this entry.
+- Created/Changed: Created 2026-11-26 by researcher (XB-NEXT-04); Changed N/A (first creation).
+- Conformance status: conformant
+- Missing fields if non-conformant: none — criteria 1-8 of `docs/RESEARCH_REGISTER.md:94-105` satisfied: unique ID; 23 non-empty fields; allowed tokens; documented source class; finding mapping; labeled uncertainties; declared scope; Source/Reproduction recorded for `unknown`; reviewer verification is a separate, unperformed step.
+
 ## 9. Assessment and audit notes
 
-- `observed` — the compact index has sixteen rows and Section 8 has sixteen detail blocks with the same IDs: R-001, R-002, R-003, R-004, R-005, R-006, RESEARCH-007, XB-0084, R-XB-NEXT-02-GI, XB-NEXT-03-EXEC, XB-NEXT-03-NATIVE, XB-NEXT-03-RELOC, XB-NEXT-03-LIBS, XB-NEXT-03-GFX, XB-NEXT-03-PERF, XB-NEXT-03-SYNTH. Conformance distribution: 16 `conformant`, 0 `non-conformant`, 0 `not_assessed`, 0 `not_applicable`. Capability-status distribution: 16 `unknown`, 0 `not investigated`, 0 `investigated-unsupported`, 0 `implemented-unvalidated`, 0 `validated`.
-- `observed` — AC-2's original wording says "seven rows" because it predates the XB-0084 and XB-NEXT-03 rows; all **sixteen** current rows are assessed here. No row is `validated` or `implemented-unvalidated`; class-4/class-5 items from RESEARCH-007 remain unapproved and `unknown`, and genuinely unknown items stay unknown.
+- `observed` — after XB-NEXT-04 the compact index has 23 rows and Section 8 has 23 detail blocks with the same IDs: R-001, R-002, R-003, R-004, R-005, R-006, RESEARCH-007, XB-0084, R-XB-NEXT-02-GI, XB-NEXT-03-EXEC, XB-NEXT-03-NATIVE, XB-NEXT-03-RELOC, XB-NEXT-03-LIBS, XB-NEXT-03-GFX, XB-NEXT-03-PERF, XB-NEXT-03-SYNTH, XB-NEXT-04-A, XB-NEXT-04-B, XB-NEXT-04-C, XB-NEXT-04-D, XB-NEXT-04-E, XB-NEXT-04-F, XB-NEXT-04-G. Conformance distribution: 23 `conformant`, 0 `non-conformant`, 0 `not_assessed`, 0 `not_applicable`. Capability-status distribution: 23 `unknown`, 0 `not investigated`, 0 `investigated-unsupported`, 0 `implemented-unvalidated`, 0 `validated`.
+- `observed` — AC-2's original wording says "seven rows" because it predates the XB-0084, XB-NEXT-03 and XB-NEXT-04 rows; all **twenty-three** current rows are assessed here. No row is `validated` or `implemented-unvalidated`; class-4/class-5 items from RESEARCH-007 remain unapproved and `unknown`, and genuinely unknown items stay unknown.
 - `observed` — AC-5 review is deliberately not performed here: the independent reviewer verifies conformance with file:line evidence, and the coordinator records that verdict later. No reviewer PASS for XB-0080-A is claimed in this file.
 - `unknown` — external web truth, license/legal effect and fresh web access were not re-checked by XB-0080-A; no new research, build, CTest, staging, commit or publication was performed by XB-0080-A.
 - `observed` — XB-0083-AUTHORITATIVE-EVIDENCE re-fetched authoritative public sources on 2026-11-24 for R-001…R-006 and recorded exact URLs, access date, scoped evidence labels and reproduction in `docs/research/XB-0083_AUTHORITATIVE_EVIDENCE.md`. The prior eight rows' conformance and all-`unknown` capability-status distribution are unchanged; the ninth row `R-XB-NEXT-02-GI` was added on 2026-11-25 with capability status `unknown`, and no row was promoted to `validated` or `implemented-unvalidated`.
 - `observed` — XB-NEXT-DEVELOPMENT-03-R0 added seven entries on 2026-11-25 (`XB-NEXT-03-EXEC`, `XB-NEXT-03-NATIVE`, `XB-NEXT-03-RELOC`, `XB-NEXT-03-LIBS`, `XB-NEXT-03-GFX`, `XB-NEXT-03-PERF`, `XB-NEXT-03-SYNTH`), each with capability status `unknown` and researcher-recorded `conformant`. Their six supporting documents are evidence-only; no implementation, ADR, game run, guest execution, build, CTest or capability promotion was performed, and independent reviewer verification is not yet recorded. No shell tool was available in this researcher tool set, so `git diff --check` was not run in this package.
-- `observed` — XB-NEXT-DEVELOPMENT-03-R0-C1 corrected RV-R0-01 (security-boundary wording in `XB-NEXT-03_NATIVE_EXECUTION_FEASIBILITY.md` and register `XB-NEXT-03-NATIVE`), RV-R0-02 (`XB-NEXT-03-SYNTH` source-class relabel and Result/conclusion alignment) and RV-R0-03 (performance document `S9` inventory/reproduction alignment). Section 7 still has sixteen rows, Section 8 still has sixteen detail blocks, and all seven XB-NEXT-03 capability statuses remain `unknown`. Mandatory independent reviewer re-check has not yet happened.
+- `observed` — XB-NEXT-DEVELOPMENT-03-R0-C1 corrected RV-R0-01 (security-boundary wording in `XB-NEXT-03_NATIVE_EXECUTION_FEASIBILITY.md` and register `XB-NEXT-03-NATIVE`), RV-R0-02 (`XB-NEXT-03-SYNTH` source-class relabel and Result/conclusion alignment) and RV-R0-03 (performance document `S9` inventory/reproduction alignment). Section 7 had sixteen rows and Section 8 had sixteen detail blocks immediately after that correction; after XB-NEXT-04 both sections have 23 rows, and all seven XB-NEXT-03 capability statuses remain `unknown`. Mandatory independent reviewer re-check has not yet happened.
 - `unknown` — web search integration returned HTTP 402 during XB-0083; direct webfetch was used instead. AMD press-release URLs attempted did not yield a usable primary CPU document, so no AMD-specific claim is recorded as authoritative. Fresh external truth after 2026-11-24 was not re-checked.
+- `observed` — XB-NEXT-04 added seven entries (`XB-NEXT-04-A` through `XB-NEXT-04-G`) on 2026-11-26 from the supplied analyzer reports and local repository evidence; each has capability status `unknown` and researcher-recorded `conformant`. No reviewer PASS is claimed. No product code, test, build configuration, execution, decryption, commit, push, merge, tag, PR or publication was performed in this researcher package.
